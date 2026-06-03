@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 
 type Role = 'patient' | 'doctor' | 'admin' | null;
 
@@ -14,6 +15,8 @@ interface AuthContextType {
   login: (role: Role) => void;
   logout: () => void;
   isAuthenticated: boolean;
+  supabaseLogin?: (email: string, password: string) => Promise<void>;
+  supabaseSignup?: (email: string, password: string, role: Role, fullName: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,6 +30,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
+    
+    // Check for Supabase session
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Fetch user profile from Supabase
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          const supabaseUser: User = {
+            id: profile.id,
+            name: profile.full_name || '',
+            email: profile.email || '',
+            role: profile.role as Role
+          };
+          setUser(supabaseUser);
+          localStorage.setItem('afya_user', JSON.stringify(supabaseUser));
+        }
+      }
+    };
+    
+    checkSession();
+    
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          const supabaseUser: User = {
+            id: profile.id,
+            name: profile.full_name || '',
+            email: profile.email || '',
+            role: profile.role as Role
+          };
+          setUser(supabaseUser);
+          localStorage.setItem('afya_user', JSON.stringify(supabaseUser));
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        localStorage.removeItem('afya_user');
+      }
+    });
+    
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = (role: Role) => {
@@ -40,13 +96,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('afya_user', JSON.stringify(mockUser));
   };
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
     localStorage.removeItem('afya_user');
+    await supabase.auth.signOut();
+  };
+  
+  const supabaseLogin = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+  
+  const supabaseSignup = async (email: string, password: string, role: Role, fullName: string) => {
+    const { error } = await supabase.auth.signUp({ 
+      email, 
+      password, 
+      options: {
+        data: {
+          full_name: fullName,
+          role: role
+        }
+      }
+    });
+    if (error) throw error;
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, supabaseLogin, supabaseSignup }}>
       {children}
     </AuthContext.Provider>
   );

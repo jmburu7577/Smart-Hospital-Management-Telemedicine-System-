@@ -1,36 +1,33 @@
 import { Link } from "react-router";
-import { Calendar, Clock, User, Video, MapPin, X, Check } from "lucide-react";
+import { Calendar, Clock, User, Video, MapPin, X, Loader2 } from "lucide-react";
+import { useAppointments } from "../../contexts/AppointmentsContext";
+import { useState } from "react";
 
 export default function ViewAppointments() {
-  const appointments = [
-    {
-      id: 1,
-      doctor: "Dr. Sarah Johnson",
-      specialty: "Cardiologist",
-      date: "May 20, 2026",
-      time: "10:00 AM",
-      type: "In-Person",
-      status: "Confirmed",
-    },
-    {
-      id: 2,
-      doctor: "Dr. Michael Chen",
-      specialty: "Dermatologist",
-      date: "May 22, 2026",
-      time: "2:30 PM",
-      type: "Video",
-      status: "Confirmed",
-    },
-    {
-      id: 3,
-      doctor: "Dr. Emily Davis",
-      specialty: "Pediatrician",
-      date: "May 25, 2026",
-      time: "11:00 AM",
-      type: "In-Person",
-      status: "Pending",
-    },
-  ];
+  const { appointments, loading, cancelAppointment } = useAppointments();
+  const [cancelling, setCancelling] = useState<string | null>(null);
+
+  const handleCancel = async (id: string) => {
+    if (window.confirm("Are you sure you want to cancel this appointment?")) {
+      setCancelling(id);
+      try {
+        await cancelAppointment(id);
+      } catch (error) {
+        alert("Failed to cancel appointment");
+      } finally {
+        setCancelling(null);
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto text-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
+        <p className="text-slate-600 mt-4">Loading appointments...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -48,82 +45,92 @@ export default function ViewAppointments() {
       </div>
 
       <div className="space-y-4">
-        {appointments.map((appointment) => (
-          <div key={appointment.id} className="bg-white p-6 rounded-xl border border-slate-200 hover:shadow-lg transition-shadow">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-900">{appointment.doctor}</h3>
-                    <p className="text-slate-600">{appointment.specialty}</p>
+        {appointments.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+            <Calendar className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <p className="text-slate-600">No appointments found</p>
+            <Link
+              to="/appointments/book"
+              className="mt-4 inline-block text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Book your first appointment
+            </Link>
+          </div>
+        ) : (
+          appointments.map((appointment) => (
+            <div key={appointment.id} className="bg-white p-6 rounded-xl border border-slate-200 hover:shadow-lg transition-shadow">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900">Dr. {appointment.doctor_id}</h3>
+                      <p className="text-slate-600">Healthcare Provider</p>
+                    </div>
+                    <span
+                      className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        appointment.status === "Confirmed"
+                          ? "bg-green-100 text-green-700"
+                          : appointment.status === "Pending"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {appointment.status}
+                    </span>
                   </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      appointment.status === "Confirmed"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
-                    }`}
-                  >
-                    {appointment.status}
-                  </span>
+
+                  <div className="flex flex-wrap gap-4 text-sm text-slate-600">
+                    <span className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(appointment.appointment_date).toLocaleDateString()}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      {appointment.appointment_time}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {appointment.appointment_type === "Video" ? (
+                        <Video className="w-4 h-4" />
+                      ) : (
+                        <MapPin className="w-4 h-4" />
+                      )}
+                      {appointment.appointment_type}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-                  <span className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {appointment.date}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    {appointment.time}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    {appointment.type === "Video" ? (
+                <div className="flex gap-3">
+                  {appointment.appointment_type === "Video" && appointment.status === "Confirmed" && (
+                    <Link
+                      to={`/telemedicine/consultation/${appointment.id}`}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                    >
                       <Video className="w-4 h-4" />
-                    ) : (
-                      <MapPin className="w-4 h-4" />
-                    )}
-                    {appointment.type}
-                  </span>
+                      Join Call
+                    </Link>
+                  )}
+                  {appointment.status !== "Completed" && appointment.status !== "Cancelled" && (
+                    <button
+                      onClick={() => handleCancel(appointment.id)}
+                      disabled={cancelling === appointment.id}
+                      className="px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition-colors disabled:opacity-50"
+                    >
+                      {cancelling === appointment.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <X className="w-4 h-4 inline mr-2" />
+                          Cancel
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
-              </div>
-
-              <div className="flex gap-3">
-                {appointment.type === "Video" && appointment.status === "Confirmed" && (
-                  <Link
-                    to={`/telemedicine/consultation/${appointment.id}`}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
-                  >
-                    <Video className="w-4 h-4" />
-                    Join Call
-                  </Link>
-                )}
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                  Reschedule
-                </button>
-                <button className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center gap-2">
-                  <X className="w-4 h-4" />
-                  Cancel
-                </button>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
-
-      {appointments.length === 0 && (
-        <div className="bg-white p-12 rounded-xl border border-slate-200 text-center">
-          <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-slate-900 mb-2">No Appointments</h3>
-          <p className="text-slate-600 mb-6">You don't have any appointments scheduled</p>
-          <Link
-            to="/appointments/book"
-            className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-          >
-            Book Your First Appointment
-          </Link>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,7 +1,34 @@
 import { Link } from "react-router";
-import { Calendar, Video, FileText, Brain, Shield, Clock } from "lucide-react";
+import { Calendar, Video, FileText, Brain, Shield, Clock, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "../../lib/supabase";
 
 export default function LandingPage() {
+  const [supabaseStatus, setSupabaseStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        console.log("Testing Supabase... URL:", import.meta.env.VITE_SUPABASE_URL);
+        const { data, error } = await supabase.from("lab_tests").select("count").limit(1);
+        console.log("Supabase response:", { data, error });
+        
+        if (!error) {
+          setSupabaseStatus("connected");
+        } else {
+          setSupabaseStatus("disconnected");
+          setErrorMsg(error.message);
+        }
+      } catch (e) {
+        setSupabaseStatus("disconnected");
+        setErrorMsg(e instanceof Error ? e.message : "Unknown error");
+      }
+    };
+    
+    checkConnection();
+  }, []);
+
   const features = [
     {
       icon: Calendar,
@@ -37,6 +64,31 @@ export default function LandingPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
+      {/* Supabase Status */}
+      <div className="p-4 mb-4 flex flex-col items-center justify-center gap-2">
+        {supabaseStatus === "checking" ? (
+          <>
+            <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+            <span className="text-slate-600">Checking Supabase connection...</span>
+          </>
+        ) : supabaseStatus === "connected" ? (
+          <>
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <span className="text-green-700 font-semibold">✅ Supabase Connected!</span>
+          </>
+        ) : (
+          <>
+            <XCircle className="w-5 h-5 text-red-600" />
+            <span className="text-red-700 font-semibold">❌ Supabase Disconnected - Using mock data</span>
+            {errorMsg && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-2 rounded max-w-2xl text-center">
+                Error: {errorMsg}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
       {/* Hero Section */}
       <section className="py-16 px-4 text-center">
         <h1 className="text-5xl font-bold text-slate-900 mb-6">
