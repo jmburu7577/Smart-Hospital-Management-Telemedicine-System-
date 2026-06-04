@@ -29,7 +29,7 @@ export default function Header() {
           </Link>
         </div>
 
-        <nav className="hidden md:flex items-center gap-6">
+        {/* <nav className="hidden md:flex items-center gap-6">
           <Link to="/appointments/book" className="text-slate-600 hover:text-blue-600 font-semibold text-sm transition-colors">
             Appointments
           </Link>
@@ -42,7 +42,7 @@ export default function Header() {
           <Link to="/symptom-checker" className="text-slate-600 hover:text-blue-600 font-semibold text-sm transition-colors">
             AI Checker
           </Link>
-        </nav>
+        </nav> */}
 
         <div className="flex items-center gap-3">
           <button className="p-2 hover:bg-slate-100 rounded-lg relative transition-colors">
