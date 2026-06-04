@@ -22,6 +22,10 @@ import SymptomChecker from "./pages/ai/SymptomChecker";
 import Profile from "./pages/profile/Profile";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import {useParams } from "react-router";
+import DoctorProfile from "./pages/doctors/DoctorProfile";
+
+
 
 export const router = createBrowserRouter([
   {
@@ -32,43 +36,161 @@ export const router = createBrowserRouter([
       { path: "login", Component: Login },
       { path: "register", Component: Register },
 
-      // Dashboards
-      { 
-        path: "patient/dashboard", 
-        element: <ProtectedRoute allowedRoles={["patient"]}><PatientDashboard /></ProtectedRoute> 
+      // Dashboards (role-protected)
+      {
+        path: "patient/dashboard",
+        element: (
+          <ProtectedRoute allowedRoles={["patient"]}>
+            <PatientDashboard />
+          </ProtectedRoute>
+        ),
       },
-      { 
-        path: "doctor/dashboard", 
-        element: <ProtectedRoute allowedRoles={["doctor"]}><DoctorDashboard /></ProtectedRoute> 
+      {
+        path: "doctor/dashboard",
+        element: (
+          <ProtectedRoute allowedRoles={["doctor"]}>
+            <DoctorDashboard />
+          </ProtectedRoute>
+        ),
       },
-      { 
-        path: "admin/dashboard", 
-        element: <ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute> 
+      {
+        path: "admin/dashboard",
+        element: (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        ),
       },
 
-      // Appointments
-      { path: "appointments/book", Component: BookAppointment },
-      { path: "appointments/view", Component: ViewAppointments },
-      { path: "appointments/schedule", Component: DoctorSchedule },
+      // Appointments (protected)
+      {
+        path: "appointments/book",
+        element: (
+          <ProtectedRoute>
+            <BookAppointment />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "appointments/view",
+        element: (
+          <ProtectedRoute>
+            <ViewAppointments />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "appointments/schedule",
+        element: (
+          <ProtectedRoute>
+            <DoctorSchedule />
+          </ProtectedRoute>
+        ),
+      },
 
-      // Electronic Health Records
-      { path: "ehr/records", Component: MedicalRecords },
-      { path: "ehr/notes", Component: ConsultationNotes },
-      { path: "ehr/reports", Component: MedicalReports },
+      // Electronic Health Records (protected)
+      {
+        path: "ehr/records",
+        element: (
+          <ProtectedRoute>
+            <MedicalRecords />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "ehr/notes",
+        element: (
+          <ProtectedRoute>
+            <ConsultationNotes />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "ehr/reports",
+        element: (
+          <ProtectedRoute>
+            <MedicalReports />
+          </ProtectedRoute>
+        ),
+      },
 
-      // Telemedicine
-      { path: "telemedicine", Component: Telemedicine },
-      { path: "telemedicine/consultation/:id", Component: VideoConsultation },
+      // Telemedicine (protected)
+      {
+        path: "telemedicine",
+        element: (
+          <ProtectedRoute>
+            <Telemedicine />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "telemedicine/consultation/:id",
+        element: (
+          <ProtectedRoute>
+            <VideoConsultation />
+          </ProtectedRoute>
+        ),
+      },
 
-      // Hospital Services
-      { path: "pharmacy", Component: Pharmacy },
-      { path: "laboratory", Component: Laboratory },
-      { path: "billing", Component: Billing },
-      { path: "payments", Component: Payments },
+      // Hospital Services (protected)
+      {
+        path: "pharmacy",
+        element: (
+          <ProtectedRoute>
+            <Pharmacy />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "laboratory",
+        element: (
+          <ProtectedRoute>
+            <Laboratory />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "billing",
+        element: (
+          <ProtectedRoute>
+            <Billing />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "payments",
+        element: (
+          <ProtectedRoute>
+            <Payments />
+          </ProtectedRoute>
+        ),
+      },
 
-      // AI & Profile
-      { path: "symptom-checker", Component: SymptomChecker },
-      { path: "profile", Component: Profile },
+      // AI & Profile (protected)
+      {
+        path: "symptom-checker",
+        element: (
+          <ProtectedRoute>
+            <SymptomChecker />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "profile",
+        element: (
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "doctor/:id",
+        element: (
+          <ProtectedRoute>
+            <DoctorProfile />
+          </ProtectedRoute>
+        ),
+      },
 
       // 404
       { path: "*", Component: NotFound },
