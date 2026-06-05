@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router";
 import { Menu, User, Bell, LogOut } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLocation } from "react-router";
 
 export default function Header() {
   const { user, logout } = useAuth();
@@ -10,6 +11,9 @@ export default function Header() {
     logout();
     navigate("/login");
   };
+  const location = useLocation();
+
+  const isLandingPage = location.pathname === "/" && !user;
 
   return (
     <header className="bg-slate-100 border-b border-slate-200 shadow-sm sticky top-0 z-50">
@@ -29,20 +33,16 @@ export default function Header() {
           </Link>
         </div>
 
-        {/* <nav className="hidden md:flex items-center gap-6">
-          <Link to="/appointments/book" className="text-slate-600 hover:text-blue-600 font-semibold text-sm transition-colors">
-            Appointments
-          </Link>
-          <Link to="/telemedicine" className="text-slate-600 hover:text-blue-600 font-semibold text-sm transition-colors">
-            Telemedicine
-          </Link>
-          <Link to="/ehr/records" className="text-slate-600 hover:text-blue-600 font-semibold text-sm transition-colors">
-            Medical Records
-          </Link>
-          <Link to="/symptom-checker" className="text-slate-600 hover:text-blue-600 font-semibold text-sm transition-colors">
-            AI Checker
-          </Link>
-        </nav> */}
+        {isLandingPage && (
+          <nav className="hidden md:flex items-center gap-6">
+            <a href="#features" className="text-slate-600 hover:text-blue-600 text-sm font-semibold">Features</a>
+            <a href="#how-it-works" className="text-slate-600 hover:text-blue-600 text-sm font-semibold">How It Works</a>
+            <a href="#specialists" className="text-slate-600 hover:text-blue-600 text-sm font-semibold">Our Specialists</a>
+            <a href="#testimonials" className="text-slate-600 hover:text-blue-600 text-sm font-semibold">Testimonials</a>
+            <a href="#why" className="text-slate-600 hover:text-blue-600 text-sm font-semibold">Why AfyaConnect</a>
+            <a href="#faq" className="text-slate-600 hover:text-blue-600 text-sm font-semibold">FAQ</a>
+          </nav>
+        )}
 
         <div className="flex items-center gap-3">
           <button className="p-2 hover:bg-slate-100 rounded-lg relative transition-colors">

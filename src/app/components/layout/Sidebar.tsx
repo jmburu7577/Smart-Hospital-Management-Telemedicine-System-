@@ -22,7 +22,10 @@ export default function Sidebar() {
 
   // Define navigation items based on role
   const getNavItems = () => {
-    const common = [{ path: "/", icon: Home, label: "Home" }];
+    // const common = [{ path: "/", icon: Home, label: "Home" }];
+    const common = !user
+      ? [{ path: "/", icon: Home, label: "Home" }]
+      : [];
     
     if (!user) return common;
 

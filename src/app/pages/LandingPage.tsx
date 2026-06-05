@@ -1,6 +1,8 @@
 import { Link } from "react-router";
 import heroImage from "@assets/hero-doctor.jpg";
 import ctaBackground from "@assets/hero-lab.jpg";
+import { ArrowUp } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   Calendar,
   Video,
@@ -157,10 +159,20 @@ const doctors = [
 ];
 
 export default function LandingPage() {
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 400); // show after 400px scroll
+    };
+
+    window.addEventListener("scroll", handleScroll);
+
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
   return (
-    <div className="w-full">
+    <div className="max-w-[1200px] mx-auto w-full">
       {/* Hero Section */}
-      <section className="relative text-white overflow-hidden">
+      <section id="hero" className="relative text-white overflow-hidden">
         {/* Hero Background */}
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -288,7 +300,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="bg-slate-100 py-20 px-4">
+      <section id="features" className="bg-slate-100 py-20 px-4 ">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Features</span>
@@ -318,7 +330,7 @@ export default function LandingPage() {
       </section>
 
       {/* How It Works */}
-      <section className="bg-white py-20 px-4">
+      <section id="how-it-works" className="bg-white py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">How It Works</span>
@@ -346,7 +358,7 @@ export default function LandingPage() {
       </section>
 
       {/* Our specialists */}
-      <section className="bg-white py-20 px-4">
+      <section id="specialists" className="bg-white py-20 px-4">
         <div className="max-w-7xl mx-auto">
 
           <div className="text-center mb-14">
@@ -400,7 +412,7 @@ export default function LandingPage() {
       </section>
 
       {/* Testimonials */}
-      <section className="bg-slate-100 py-20 px-4">
+      <section id="testimonials" className="bg-slate-100 py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Testimonials</span>
@@ -431,7 +443,7 @@ export default function LandingPage() {
       </section>
 
       {/* Why Choose Us */}
-      <section className="bg-white py-20 px-4">
+      <section id="why" className="bg-white py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
@@ -477,7 +489,7 @@ export default function LandingPage() {
       </section>
 
       {/* FAQ */}
-      <section className="bg-slate-100 py-20 px-4">
+      <section id="faq" className="bg-slate-100 py-20 px-4">
         <div className="max-w-4xl mx-auto">
 
           <div className="text-center mb-14">
@@ -580,6 +592,18 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {showScrollTop && (
+        <button
+          onClick={() => {
+            document.getElementById("hero")?.scrollIntoView({ behavior: "smooth" });
+          }}
+          className="fixed bottom-8 right-8 z-50 bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-all"
+        >
+          ↑ Top
+        </button>
+      )}
+      
     </div>
   );
 }
