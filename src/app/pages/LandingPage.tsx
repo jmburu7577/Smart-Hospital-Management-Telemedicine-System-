@@ -259,25 +259,25 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 py-14">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
 
-            <div className="bg-slate-50 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
+            <div className="bg-slate-100 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
               <Users className="w-10 h-10 text-blue-600 mx-auto mb-3" />
               <p className="text-4xl font-extrabold text-blue-600">10,000+</p>
               <p className="text-slate-500 text-sm mt-2">Patients Served</p>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
+            <div className="bg-slate-100 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
               <Stethoscope className="w-10 h-10 text-green-600 mx-auto mb-3" />
               <p className="text-4xl font-extrabold text-green-600">500+</p>
               <p className="text-slate-500 text-sm mt-2">Certified Doctors</p>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
+            <div className="bg-slate-100 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
               <Award className="w-10 h-10 text-purple-600 mx-auto mb-3" />
               <p className="text-4xl font-extrabold text-purple-600">50+</p>
               <p className="text-slate-500 text-sm mt-2">Specialties</p>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
+            <div className="bg-slate-100 rounded-2xl p-6 text-center hover:shadow-lg transition-all">
               <Shield className="w-10 h-10 text-indigo-600 mx-auto mb-3" />
               <p className="text-4xl font-extrabold text-indigo-600">99.9%</p>
               <p className="text-slate-500 text-sm mt-2">System Uptime</p>
@@ -288,7 +288,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="bg-slate-50 py-20 px-4">
+      <section className="bg-slate-100 py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Features</span>
@@ -400,7 +400,7 @@ export default function LandingPage() {
       </section>
 
       {/* Testimonials */}
-      <section className="bg-slate-50 py-20 px-4">
+      <section className="bg-slate-100 py-20 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Testimonials</span>
@@ -477,7 +477,7 @@ export default function LandingPage() {
       </section>
 
       {/* FAQ */}
-      <section className="bg-slate-50 py-20 px-4">
+      <section className="bg-slate-100 py-20 px-4">
         <div className="max-w-4xl mx-auto">
 
           <div className="text-center mb-14">
