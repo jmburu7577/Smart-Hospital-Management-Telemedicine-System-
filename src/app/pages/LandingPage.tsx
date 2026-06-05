@@ -1,4 +1,6 @@
 import { Link } from "react-router";
+import heroImage from "@assets/hero-doctor.jpg";
+import ctaBackground from "@assets/hero-lab.jpg";
 import {
   Calendar,
   Video,
@@ -158,11 +160,15 @@ export default function LandingPage() {
   return (
     <div className="w-full">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 left-10 w-72 h-72 bg-white rounded-full filter blur-3xl" />
-          <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-300 rounded-full filter blur-3xl" />
-        </div>
+      <section className="relative text-white overflow-hidden">
+        {/* Hero Background */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${heroImage})` }}
+        />
+        {/* Optional dark overlay for text readability */}
+        <div className="absolute inset-0 bg-blue-900/60" />
+
         <div className="relative max-w-7xl mx-auto px-4 py-24 lg:py-32">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -528,9 +534,19 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 py-24 px-4">
-        <div className="max-w-4xl mx-auto text-center text-white">
+      {/* Hero CTA Section */}
+      <section className="relative text-white overflow-hidden">
+        {/* Background Image */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${ctaBackground})` }}
+        />
 
+        {/* Dark Overlay */}
+        <div className="absolute inset-0 bg-blue-900/55" />
+
+        {/* Content */}
+        <div className="relative z-10 max-w-4xl mx-auto text-center py-24 px-4">
           <h2 className="text-5xl font-extrabold mb-6">
             Experience Healthcare Without Boundaries
           </h2>
@@ -547,7 +563,6 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-wrap justify-center gap-4">
-
             <Link
               to="/register"
               className="inline-flex items-center gap-2 px-10 py-4 bg-white text-blue-700 rounded-xl font-bold hover:bg-blue-50 transition-all shadow-lg"
@@ -562,9 +577,7 @@ export default function LandingPage() {
             >
               Sign In
             </Link>
-
           </div>
-
         </div>
       </section>
     </div>
