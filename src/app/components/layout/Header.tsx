@@ -12,7 +12,7 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
+    <header className="bg-slate-100 border-b border-slate-200 shadow-sm sticky top-0 z-50">
       <div className="px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button className="lg:hidden p-2 hover:bg-slate-100 rounded-lg">

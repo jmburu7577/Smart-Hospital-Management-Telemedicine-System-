@@ -14,8 +14,10 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Button } from "../../components/ui/button";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function PatientDashboard() {
+  const { user } = useAuth();
   const upcomingAppointments = [
     { id: 1, doctor: "Dr. Sarah Johnson", specialty: "Cardiologist", date: "May 20, 2026", time: "10:00 AM", type: "In-Person" },
     { id: 2, doctor: "Dr. Michael Chen", specialty: "Dermatologist", date: "May 22, 2026", time: "2:30 PM", type: "Video" },
@@ -36,7 +38,9 @@ export default function PatientDashboard() {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Patient Dashboard</h1>
-          <p className="text-slate-600 mt-2">Welcome back! Here's your health overview</p>
+          <p className="text-slate-600 mt-2">
+            Welcome back, {user?.name ?? "there"}! Here's your health overview
+          </p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" className="flex items-center gap-2">

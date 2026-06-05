@@ -22,7 +22,6 @@ import SymptomChecker from "./pages/ai/SymptomChecker";
 import Profile from "./pages/profile/Profile";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
-import {useParams } from "react-router";
 import DoctorProfile from "./pages/doctors/DoctorProfile";
 
 
@@ -184,12 +183,8 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: "doctor/:id",
-        element: (
-          <ProtectedRoute>
-            <DoctorProfile />
-          </ProtectedRoute>
-        ),
+        path: "doctors/:id",
+        element: <DoctorProfile />,
       },
 
       // 404
