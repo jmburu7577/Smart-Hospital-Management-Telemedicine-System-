@@ -1,10 +1,10 @@
 import { Link, useNavigate } from "react-router";
 import { Mail, Lock, LogIn, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Login() {
-  const { supabaseLogin } = useAuth();
+  const { supabaseLogin, user } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -29,31 +29,30 @@ export default function Login() {
       }
 
       await supabaseLogin(email, password);
-
-      const savedUser = localStorage.getItem("afya_user");
-
-      if (!savedUser) {
-        setError("Login succeeded but user data not found");
-        return;
-      }
-
-      const role = JSON.parse(savedUser).role;
-
-      const redirectMap = {
-        patient: "/patient/dashboard",
-        doctor: "/doctor/dashboard",
-        admin: "/admin/dashboard",
-      };
-
-      navigate(redirectMap[role as keyof typeof redirectMap], {
-        replace: true,
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
   };
+
+  const role = user?.role;
+
+  useEffect(() => {
+    if (!role) {
+      return;
+    }
+
+    const redirectMap = {
+      patient: "/patient/dashboard",
+      doctor: "/doctor/dashboard",
+      admin: "/admin/dashboard",
+    };
+
+    navigate(redirectMap[role as keyof typeof redirectMap], {
+      replace: true,
+    });
+  }, [navigate, role]);
 
   return (
     <div className="max-w-md mx-auto mt-12">

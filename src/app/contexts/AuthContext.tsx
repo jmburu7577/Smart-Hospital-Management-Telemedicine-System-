@@ -15,14 +15,38 @@ interface AuthContextType {
   login: (role: Role) => void;
   logout: () => void;
   isAuthenticated: boolean;
+  authLoading: boolean;
   supabaseLogin?: (email: string, password: string) => Promise<void>;
-  supabaseSignup?: (email: string, password: string, role: Role, fullName: string) => Promise<void>;
+  supabaseSignup?: (email: string, password: string, role: Role, fullName: string, phone?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function ensureRoleRecord(profile: { id: string; role: Role }) {
+  if (profile.role === "patient") {
+    const { error } = await supabase
+      .from("patients")
+      .upsert([{ id: profile.id }], { onConflict: "id", ignoreDuplicates: false });
+
+    if (error) {
+      console.error("Error ensuring patient record:", error);
+    }
+  }
+
+  if (profile.role === "doctor") {
+    const { error } = await supabase
+      .from("doctors")
+      .upsert([{ id: profile.id, specialty: "General Practice" }], { onConflict: "id", ignoreDuplicates: false });
+
+    if (error) {
+      console.error("Error ensuring doctor record:", error);
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Initialize from localStorage if available
   useEffect(() => {
@@ -43,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
         
         if (profile) {
+          await ensureRoleRecord({ id: profile.id, role: profile.role as Role });
           const supabaseUser: User = {
             id: profile.id,
             name: profile.full_name || '',
@@ -53,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem('afya_user', JSON.stringify(supabaseUser));
         }
       }
+      setAuthLoading(false);
     };
     
     checkSession();
@@ -67,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
         
         if (profile) {
+          await ensureRoleRecord({ id: profile.id, role: profile.role as Role });
           const supabaseUser: User = {
             id: profile.id,
             name: profile.full_name || '',
@@ -80,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         localStorage.removeItem('afya_user');
       }
+      setAuthLoading(false);
     });
     
     return () => subscription.unsubscribe();
@@ -94,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     setUser(mockUser);
     localStorage.setItem('afya_user', JSON.stringify(mockUser));
+    setAuthLoading(false);
   };
 
   const logout = async () => {
@@ -103,18 +132,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   
   const supabaseLogin = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    if (data.user) {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      if (profile) {
+        const supabaseUser: User = {
+          id: profile.id,
+          name: profile.full_name || '',
+          email: profile.email || '',
+          role: profile.role as Role
+        };
+        setUser(supabaseUser);
+        localStorage.setItem('afya_user', JSON.stringify(supabaseUser));
+      }
+    }
+
+    setAuthLoading(false);
   };
   
-  const supabaseSignup = async (email: string, password: string, role: Role, fullName: string) => {
+  const supabaseSignup = async (email: string, password: string, role: Role, fullName: string, phone?: string) => {
     const { error } = await supabase.auth.signUp({ 
       email, 
       password, 
       options: {
         data: {
           full_name: fullName,
-          role: role
+          role: role,
+          phone: phone ?? null,
         }
       }
     });
@@ -122,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, supabaseLogin, supabaseSignup }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, authLoading, supabaseLogin, supabaseSignup }}>
       {children}
     </AuthContext.Provider>
   );
