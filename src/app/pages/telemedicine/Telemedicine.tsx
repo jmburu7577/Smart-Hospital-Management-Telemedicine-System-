@@ -1,673 +1,437 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
-  Video, Calendar, Clock, CheckCircle,
-  Star, ChevronRight, Wifi, Mic, Camera,
-  FileText, Bell, Search, X,
-  type LucideIcon,
+  Calendar,
+  CheckCircle,
+  Clock,
+  FileText,
+  Loader2,
+  Shield,
+  Stethoscope,
+  Video,
+  Wifi,
 } from "lucide-react";
+import { useAppointments, type Appointment } from "../../contexts/AppointmentsContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { supabase } from "../../../lib/supabase";
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface Doctor {
-  id: number;
-  name: string;
-  specialty: string;
-  rating: number;
-  reviews: number;
-  available: boolean;
-  avatar: string;
-  color: string;
-  nextSlot: string;
+function getAppointmentStart(date: string, time: string) {
+  const normalized = time.length === 5 ? `${time}:00` : time;
+  return new Date(`${date}T${normalized}`);
 }
 
-interface Consultation {
-  id: number;
-  doctor: string;
-  specialty: string;
-  date: string;
-  time: string;
-  status: string;
-  avatar: string;
-  color: string;
-  minutesUntil: number | null;
+function formatAppointmentDate(date: string) {
+  return new Date(date).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-interface Step {
-  icon: LucideIcon;
-  label: string;
-  desc: string;
+function formatAppointmentTime(time: string) {
+  const normalized = time.length === 5 ? `${time}:00` : time;
+  return new Date(`1970-01-01T${normalized}`).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-interface AvatarProps {
-  initials: string;
-  color: string;
-  size?: number;
-}
+function getJoinState(appointment: Appointment) {
+  const start = getAppointmentStart(appointment.appointment_date, appointment.appointment_time);
+  const now = new Date();
+  const joinWindowStart = new Date(start.getTime() - 10 * 60 * 1000);
+  const joinWindowEnd = new Date(start.getTime() + 60 * 60 * 1000);
 
-interface StatusBadgeProps {
-  status: string;
-  minutesUntil: number | null;
-}
-
-// ── Data ─────────────────────────────────────────────────────────────────────
-
-const doctors: Doctor[] = [
-  {
-    id: 1,
-    name: "Dr. Sarah Johnson",
-    specialty: "General Practice",
-    rating: 4.9,
-    reviews: 214,
-    available: true,
-    avatar: "SJ",
-    color: "#0EA5E9",
-    nextSlot: "Today, 3:00 PM",
-  },
-  {
-    id: 2,
-    name: "Dr. Michael Chen",
-    specialty: "Cardiology",
-    rating: 4.8,
-    reviews: 189,
-    available: true,
-    avatar: "MC",
-    color: "#10B981",
-    nextSlot: "Today, 4:30 PM",
-  },
-  {
-    id: 3,
-    name: "Dr. Amara Osei",
-    specialty: "Dermatology",
-    rating: 4.7,
-    reviews: 143,
-    available: false,
-    avatar: "AO",
-    color: "#F59E0B",
-    nextSlot: "Tomorrow, 9:00 AM",
-  },
-  {
-    id: 4,
-    name: "Dr. Lisa Mwangi",
-    specialty: "Pediatrics",
-    rating: 4.9,
-    reviews: 301,
-    available: true,
-    avatar: "LM",
-    color: "#8B5CF6",
-    nextSlot: "Today, 5:00 PM",
-  },
-];
-
-const upcomingConsultations: Consultation[] = [
-  {
-    id: 1,
-    doctor: "Dr. Sarah Johnson",
-    specialty: "General Practice",
-    date: "May 26, 2026",
-    time: "10:00 AM",
-    status: "Upcoming",
-    avatar: "SJ",
-    color: "#0EA5E9",
-    minutesUntil: 47,
-  },
-  {
-    id: 2,
-    doctor: "Dr. Michael Chen",
-    specialty: "Cardiology",
-    date: "May 28, 2026",
-    time: "2:30 PM",
-    status: "Scheduled",
-    avatar: "MC",
-    color: "#10B981",
-    minutesUntil: null,
-  },
-];
-
-const steps: Step[] = [
-  { icon: Calendar, label: "Schedule", desc: "Book a slot with your preferred doctor" },
-  { icon: Bell,     label: "Confirm",  desc: "Get notified via email and SMS" },
-  { icon: Video,    label: "Join call", desc: "Connect at your scheduled time" },
-  { icon: FileText, label: "Get Rx",   desc: "Receive digital prescriptions" },
-];
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function Avatar({ initials, color, size = 40 }: AvatarProps) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: color + "22",
-        border: `1.5px solid ${color}44`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: size * 0.32,
-        fontWeight: 600,
-        color,
-        flexShrink: 0,
-        fontFamily: "'DM Sans', sans-serif",
-      }}
-    >
-      {initials}
-    </div>
-  );
-}
-
-function StatusBadge({ status, minutesUntil }: StatusBadgeProps) {
-  if (minutesUntil !== null && minutesUntil !== undefined) {
-    return (
-      <span
-        style={{
-          background: "#FEF3C7",
-          color: "#92400E",
-          fontSize: 11,
-          fontWeight: 600,
-          padding: "3px 10px",
-          borderRadius: 999,
-          whiteSpace: "nowrap",
-        }}
-      >
-        In {minutesUntil}m
-      </span>
-    );
+  if (appointment.appointment_type !== "Video") {
+    return {
+      canJoin: false,
+      label: "In-person visit",
+      description: "This appointment is not a video consultation.",
+      tone: "slate",
+    } as const;
   }
-  return (
-    <span
-      style={{
-        background: "#D1FAE5",
-        color: "#065F46",
-        fontSize: 11,
-        fontWeight: 600,
-        padding: "3px 10px",
-        borderRadius: 999,
-      }}
-    >
-      {status}
-    </span>
-  );
+
+  if (appointment.status !== "Confirmed") {
+    return {
+      canJoin: false,
+      label: appointment.status,
+      description: "Join becomes available after the doctor confirms the consultation.",
+      tone: "amber",
+    } as const;
+  }
+
+  if (now < joinWindowStart) {
+    return {
+      canJoin: false,
+      label: "Starts soon",
+      description: "Join opens 10 minutes before the scheduled start time.",
+      tone: "blue",
+    } as const;
+  }
+
+  if (now > joinWindowEnd) {
+    return {
+      canJoin: false,
+      label: "Call ended",
+      description: "This consultation is outside the active join window.",
+      tone: "slate",
+    } as const;
+  }
+
+  return {
+    canJoin: true,
+    label: "Ready to join",
+    description: "Your doctor can meet you now in the consultation room.",
+    tone: "green",
+  } as const;
 }
 
-// ── Page component ────────────────────────────────────────────────────────────
+function getToneClasses(tone: "green" | "blue" | "amber" | "slate") {
+  switch (tone) {
+    case "green":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "blue":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "amber":
+      return "bg-amber-100 text-amber-700 border-amber-200";
+    default:
+      return "bg-slate-100 text-slate-700 border-slate-200";
+  }
+}
 
 export default function Telemedicine() {
-  const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [filterAvailable, setFilterAvailable] = useState<boolean>(false);
+  const { user } = useAuth();
+  const { appointments, loading } = useAppointments();
+  const [doctorSpecialties, setDoctorSpecialties] = useState<Record<string, string>>({});
 
-  const filteredDoctors = doctors.filter((d) => {
-    const matchesSearch =
-      d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.specialty.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterAvailable ? d.available : true;
-    return matchesSearch && matchesFilter;
-  });
+  const patientVideoAppointments = useMemo(() => {
+    if (!user) {
+      return [];
+    }
 
-  return (
-    <div
-      style={{
-        maxWidth: 1100,
-        margin: "0 auto",
-        padding: "2rem 1.5rem",
-        fontFamily: "'DM Sans', sans-serif",
-      }}
-    >
-      {/* Google fonts */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap');
-        * { box-sizing: border-box; }
-        .tele-btn-primary {
-          background: #0EA5E9; color: #fff; border: none;
-          padding: 10px 22px; border-radius: 10px;
-          font-size: 14px; font-weight: 600; cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: background 0.15s, transform 0.1s;
-        }
-        .tele-btn-primary:hover { background: #0284C7; transform: translateY(-1px); }
-        .doctor-card {
-          background: #fff; border: 1px solid #E2E8F0;
-          border-radius: 14px; padding: 18px;
-          transition: box-shadow 0.2s, transform 0.15s;
-        }
-        .doctor-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); transform: translateY(-2px); }
-        .tab-btn {
-          padding: 7px 18px; border-radius: 8px; border: none;
-          font-size: 13px; font-weight: 500; cursor: pointer;
-          font-family: 'DM Sans', sans-serif;
-          transition: background 0.15s, color 0.15s;
-        }
-        .tab-btn.active { background: #0EA5E9; color: #fff; }
-        .tab-btn:not(.active) { background: #F1F5F9; color: #64748B; }
-        .tab-btn:not(.active):hover { background: #E2E8F0; color: #334155; }
-        input[type="text"] {
-          font-family: 'DM Sans', sans-serif;
-          border: 1px solid #E2E8F0; border-radius: 10px;
-          padding: 9px 14px 9px 38px; font-size: 13px;
-          outline: none; width: 100%;
-          transition: border-color 0.15s;
-        }
-        input[type="text"]:focus { border-color: #0EA5E9; }
-        .check-pill {
-          display: flex; align-items: center; gap: 6px;
-          padding: 7px 14px; border-radius: 8px; border: 1px solid #E2E8F0;
-          font-size: 13px; font-weight: 500; cursor: pointer;
-          transition: background 0.15s, border-color 0.15s;
-          font-family: 'DM Sans', sans-serif; white-space: nowrap;
-          user-select: none;
-        }
-        .check-pill.on { background: #F0F9FF; border-color: #BAE6FD; color: #0284C7; }
-        .check-pill:not(.on) { color: #64748B; }
-      `}</style>
+    return appointments
+      .filter(
+        (appointment) =>
+          appointment.patient_id === user.id && appointment.appointment_type === "Video",
+      )
+      .sort((a, b) => {
+        const first = getAppointmentStart(a.appointment_date, a.appointment_time).getTime();
+        const second = getAppointmentStart(b.appointment_date, b.appointment_time).getTime();
+        return first - second;
+      });
+  }, [appointments, user]);
 
-      {/* Page header */}
-      <div style={{ marginBottom: "1.75rem" }}>
-        <h1
-          style={{
-            fontSize: 28,
-            fontFamily: "'DM Serif Display', serif",
-            color: "#0F172A",
-            margin: 0,
-          }}
-        >
-          Telemedicine
-        </h1>
-        <p style={{ fontSize: 14, color: "#64748B", marginTop: 6 }}>
-          Connect with certified doctors from wherever you are
-        </p>
+  useEffect(() => {
+    const loadDoctorSpecialties = async () => {
+      const doctorIds = [...new Set(patientVideoAppointments.map((appointment) => appointment.doctor_id))];
+
+      if (doctorIds.length === 0) {
+        setDoctorSpecialties({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("doctors")
+        .select("id, specialty")
+        .in("id", doctorIds);
+
+      if (error) {
+        console.error("Error loading doctor specialties:", error);
+        return;
+      }
+
+      const specialtyMap = Object.fromEntries((data ?? []).map((doctor) => [doctor.id, doctor.specialty]));
+      setDoctorSpecialties(specialtyMap);
+    };
+
+    loadDoctorSpecialties();
+  }, [patientVideoAppointments]);
+
+  const now = new Date();
+  const upcomingAppointments = patientVideoAppointments.filter(
+    (appointment) => getAppointmentStart(appointment.appointment_date, appointment.appointment_time) >= now,
+  );
+  const pastAppointments = patientVideoAppointments.filter(
+    (appointment) => getAppointmentStart(appointment.appointment_date, appointment.appointment_time) < now,
+  );
+  const nextAppointment = upcomingAppointments[0] ?? null;
+  const confirmedAppointments = patientVideoAppointments.filter(
+    (appointment) => appointment.status === "Confirmed",
+  ).length;
+  const completedAppointments = patientVideoAppointments.filter(
+    (appointment) => appointment.status === "Completed",
+  ).length;
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto py-16 text-center">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
+        <p className="mt-4 text-slate-600">Loading your telemedicine visits...</p>
       </div>
+    );
+  }
 
-      {/* Hero banner */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, #0369A1 0%, #0EA5E9 60%, #38BDF8 100%)",
-          borderRadius: 20,
-          padding: "2rem 2.25rem",
-          marginBottom: "2rem",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "1.5rem",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute", right: -40, top: -40,
-            width: 200, height: 200, borderRadius: "50%",
-            background: "rgba(255,255,255,0.06)", pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute", right: 60, bottom: -60,
-            width: 160, height: 160, borderRadius: "50%",
-            background: "rgba(255,255,255,0.05)", pointerEvents: "none",
-          }}
-        />
-
-        <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-          <div
-            style={{
-              width: 60, height: 60, borderRadius: "50%",
-              background: "rgba(255,255,255,0.18)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <Video size={28} color="#fff" />
-          </div>
-          <div>
-            <h2 style={{ color: "#fff", fontSize: 20, fontWeight: 600, margin: 0 }}>
-              Start a Video Consultation
-            </h2>
-            <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4 }}>
-              Speak to a doctor in minutes — no waiting room required
-            </p>
-            <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
-              {(
-                [
-                  { icon: Wifi,   label: "HD Video" },
-                  { icon: Mic,    label: "Clear Audio" },
-                  { icon: Camera, label: "Screen Share" },
-                ] as { icon: LucideIcon; label: string }[]
-              ).map(({ icon: Icon, label }) => (
-                <span
-                  key={label}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    fontSize: 12, color: "rgba(255,255,255,0.85)",
-                  }}
-                >
-                  <Icon size={13} /> {label}
-                </span>
-              ))}
-            </div>
+  if (!user || user.role !== "patient") {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8">
+          <h1 className="text-3xl font-bold text-slate-900">Telemedicine</h1>
+          <p className="mt-3 text-slate-600">
+            This page is tailored for patients to manage video consultations and join scheduled calls.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              to="/appointments/schedule"
+              className="px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Go to Doctor Schedule
+            </Link>
+            <Link
+              to="/appointments/view"
+              className="px-5 py-3 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-colors"
+            >
+              View Appointments
+            </Link>
           </div>
         </div>
+      </div>
+    );
+  }
 
+  return (
+    <div className="max-w-6xl mx-auto space-y-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Telemedicine</h1>
+          <p className="mt-2 text-slate-600">
+            Review your video consultations, see doctor details, and join calls when they are ready.
+          </p>
+        </div>
         <Link
           to="/appointments/book"
-          style={{
-            background: "#fff", color: "#0369A1",
-            padding: "11px 26px", borderRadius: 12,
-            fontWeight: 700, fontSize: 14, textDecoration: "none",
-            display: "inline-block", whiteSpace: "nowrap",
-          }}
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
         >
-          Schedule Consultation
+          <Calendar className="w-4 h-4" />
+          Book Video Visit
         </Link>
       </div>
 
-      {/* How it works */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
-          marginBottom: "2rem",
-        }}
-      >
-        {steps.map(({ icon: Icon, label, desc }, i) => (
-          <div
-            key={label}
-            style={{
-              background: "#F8FAFC", border: "1px solid #E2E8F0",
-              borderRadius: 14, padding: "16px 14px",
-              display: "flex", flexDirection: "column", gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div
-                style={{
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: "#E0F2FE",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                <Icon size={15} color="#0284C7" />
-              </div>
-              <span style={{ fontSize: 11, color: "#94A3B8", fontWeight: 600 }}>
-                Step {i + 1}
-              </span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 p-8 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-blue-100 text-sm font-medium">Next consultation</p>
+              <h2 className="mt-2 text-2xl font-bold">
+                {nextAppointment ? nextAppointment.doctor_name ?? "Assigned Doctor" : "No video visit scheduled"}
+              </h2>
+              <p className="mt-2 text-blue-100">
+                {nextAppointment
+                  ? `${formatAppointmentDate(nextAppointment.appointment_date)} at ${formatAppointmentTime(
+                      nextAppointment.appointment_time,
+                    )}`
+                  : "Book a video consultation and it will appear here automatically."}
+              </p>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#1E293B" }}>{label}</div>
-            <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>{desc}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Main two-column section */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
-
-        {/* Left: My Consultations */}
-        <div
-          style={{
-            background: "#fff", border: "1px solid #E2E8F0",
-            borderRadius: 16, padding: "1.25rem",
-          }}
-        >
-          <div
-            style={{
-              display: "flex", alignItems: "center",
-              justifyContent: "space-between", marginBottom: "1rem",
-            }}
-          >
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A", margin: 0 }}>
-              My Consultations
-            </h2>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                className={`tab-btn${activeTab === "upcoming" ? " active" : ""}`}
-                onClick={() => setActiveTab("upcoming")}
-              >
-                Upcoming
-              </button>
-              <button
-                className={`tab-btn${activeTab === "past" ? " active" : ""}`}
-                onClick={() => setActiveTab("past")}
-              >
-                Past
-              </button>
+            <div className="hidden md:flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15">
+              <Video className="w-7 h-7" />
             </div>
           </div>
 
-          {activeTab === "upcoming" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {upcomingConsultations.map((c) => (
-                <div
-                  key={c.id}
-                  style={{
-                    background: "#F8FAFC", border: "1px solid #E2E8F0",
-                    borderRadius: 12, padding: "14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex", alignItems: "flex-start",
-                      justifyContent: "space-between", marginBottom: 10,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <Avatar initials={c.avatar} color={c.color} size={38} />
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}>
-                          {c.doctor}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#64748B" }}>{c.specialty}</div>
-                      </div>
-                    </div>
-                    <StatusBadge status={c.status} minutesUntil={c.minutesUntil} />
-                  </div>
-
-                  <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
-                    <span
-                      style={{
-                        display: "flex", alignItems: "center", gap: 5,
-                        fontSize: 12, color: "#64748B",
-                      }}
-                    >
-                      <Calendar size={13} /> {c.date}
-                    </span>
-                    <span
-                      style={{
-                        display: "flex", alignItems: "center", gap: 5,
-                        fontSize: 12, color: "#64748B",
-                      }}
-                    >
-                      <Clock size={13} /> {c.time}
-                    </span>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Link
-                      to={`/telemedicine/consultation/${c.id}`}
-                      style={{
-                        flex: 1, display: "block", textAlign: "center",
-                        padding: "9px", background: "#0EA5E9", color: "#fff",
-                        borderRadius: 10, fontSize: 13, fontWeight: 600,
-                        textDecoration: "none",
-                      }}
-                    >
-                      <Video size={13} style={{ verticalAlign: -2, marginRight: 5 }} />
-                      Join Call
-                    </Link>
-                    <button
-                      style={{
-                        padding: "9px 14px", border: "1px solid #E2E8F0",
-                        borderRadius: 10, background: "transparent",
-                        cursor: "pointer", color: "#64748B",
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
+          {nextAppointment ? (
+            <div className="mt-6 rounded-xl bg-white/10 p-5 backdrop-blur-sm">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-blue-100">Consultation reason</p>
+                  <p className="mt-1 font-medium text-white">{nextAppointment.reason || "General follow-up"}</p>
+                  <p className="mt-2 text-sm text-blue-100">
+                    Specialty: {doctorSpecialties[nextAppointment.doctor_id] ?? "General practice"}
+                  </p>
                 </div>
-              ))}
-
-              <Link
-                to="/appointments/book"
-                style={{
-                  display: "flex", alignItems: "center",
-                  justifyContent: "center", gap: 6,
-                  padding: "10px", border: "1.5px dashed #BAE6FD",
-                  borderRadius: 12, color: "#0284C7",
-                  fontSize: 13, fontWeight: 500, textDecoration: "none",
-                }}
-              >
-                + Book another consultation
-              </Link>
+                {getJoinState(nextAppointment).canJoin ? (
+                  <Link
+                    to={`/telemedicine/consultation/${nextAppointment.id}`}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-blue-700 rounded-lg font-semibold hover:bg-blue-50 transition-colors"
+                  >
+                    <Video className="w-4 h-4" />
+                    Join Call
+                  </Link>
+                ) : (
+                  <div className="rounded-lg border border-white/25 px-4 py-3 text-sm text-blue-50">
+                    {getJoinState(nextAppointment).description}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
-            <div
-              style={{
-                textAlign: "center", padding: "2.5rem 1rem",
-                color: "#94A3B8", fontSize: 14,
-              }}
-            >
-              <CheckCircle
-                size={36}
-                style={{ margin: "0 auto 10px", display: "block", color: "#CBD5E1" }}
-              />
-              No past consultations yet
-            </div>
-          )}
+          ) : null}
         </div>
 
-        {/* Right: Find a Doctor */}
-        <div
-          style={{
-            background: "#fff", border: "1px solid #E2E8F0",
-            borderRadius: 16, padding: "1.25rem",
-          }}
-        >
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: "#0F172A", margin: "0 0 1rem" }}>
-            Find a Doctor
-          </h2>
+        <div className="grid grid-cols-1 gap-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+            <p className="text-sm text-slate-500">Upcoming video visits</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{upcomingAppointments.length}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+            <p className="text-sm text-slate-500">Confirmed calls</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{confirmedAppointments}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+            <p className="text-sm text-slate-500">Completed consultations</p>
+            <p className="mt-2 text-3xl font-bold text-slate-900">{completedAppointments}</p>
+          </div>
+        </div>
+      </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: "1rem" }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <Search
-                size={14}
-                color="#94A3B8"
-                style={{
-                  position: "absolute", left: 12,
-                  top: "50%", transform: "translateY(-50%)",
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Search by name or specialty…"
-                value={searchQuery}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setSearchQuery(e.target.value)
-                }
-              />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Upcoming video consultations</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Your confirmed and pending telemedicine appointments appear here.
+              </p>
             </div>
-            <div
-              className={`check-pill${filterAvailable ? " on" : ""}`}
-              onClick={() => setFilterAvailable((prev) => !prev)}
-            >
-              <div
-                style={{
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: filterAvailable ? "#10B981" : "#CBD5E1",
-                }}
-              />
-              Available
+            <Link to="/appointments/view" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+              View all appointments
+            </Link>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {upcomingAppointments.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                <Video className="w-10 h-10 mx-auto text-slate-400" />
+                <p className="mt-4 text-slate-700 font-medium">No upcoming video consultations</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Once a doctor schedules or confirms a telemedicine visit, it will appear here.
+                </p>
+              </div>
+            ) : (
+              upcomingAppointments.map((appointment) => {
+                const joinState = getJoinState(appointment);
+                return (
+                  <div key={appointment.id} className="rounded-xl border border-slate-200 p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h3 className="text-lg font-semibold text-slate-900">
+                            {appointment.doctor_name ?? "Assigned Doctor"}
+                          </h3>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${getToneClasses(
+                              joinState.tone,
+                            )}`}
+                          >
+                            {joinState.label}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-600">
+                          <span className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-blue-600" />
+                            {formatAppointmentDate(appointment.appointment_date)}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-blue-600" />
+                            {formatAppointmentTime(appointment.appointment_time)}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <Stethoscope className="w-4 h-4 text-blue-600" />
+                            {doctorSpecialties[appointment.doctor_id] ?? "General practice"}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-blue-600" />
+                            {appointment.status} consultation
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                          <span className="font-semibold text-slate-900">Reason:</span>{" "}
+                          {appointment.reason || "No reason provided"}
+                        </div>
+                        <p className="text-sm text-slate-500">{joinState.description}</p>
+                      </div>
+
+                      <div className="flex flex-col gap-3 lg:min-w-52">
+                        {joinState.canJoin ? (
+                          <Link
+                            to={`/telemedicine/consultation/${appointment.id}`}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                          >
+                            <Video className="w-4 h-4" />
+                            Join Call
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 text-slate-500 rounded-lg font-semibold cursor-not-allowed"
+                          >
+                            <Video className="w-4 h-4" />
+                            Not Ready Yet
+                          </button>
+                        )}
+                        <Link
+                          to="/appointments/view"
+                          className="inline-flex items-center justify-center gap-2 px-4 py-3 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-colors"
+                        >
+                          <FileText className="w-4 h-4" />
+                          View Appointment
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+            <h2 className="text-lg font-bold text-slate-900">Before you join</h2>
+            <div className="mt-4 space-y-4">
+              <div className="flex gap-3">
+                <Wifi className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-900">Stable internet connection</p>
+                  <p className="text-sm text-slate-600">Use Wi-Fi or a reliable mobile data connection.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-900">Quiet, private space</p>
+                  <p className="text-sm text-slate-600">Choose a place where you can speak freely with your doctor.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <FileText className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-900">Keep records nearby</p>
+                  <p className="text-sm text-slate-600">Have your medications, vitals, and previous notes ready.</p>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {filteredDoctors.length === 0 ? (
-              <div
-                style={{
-                  textAlign: "center", padding: "2rem",
-                  color: "#94A3B8", fontSize: 13,
-                }}
-              >
-                No doctors match your search
-              </div>
-            ) : (
-              filteredDoctors.map((doc) => (
-                <div key={doc.id} className="doctor-card">
-                  <div
-                    style={{
-                      display: "flex", alignItems: "center",
-                      gap: 10, marginBottom: 10,
-                    }}
-                  >
-                    <Avatar initials={doc.avatar} color={doc.color} size={40} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span
-                          style={{ fontSize: 14, fontWeight: 600, color: "#0F172A" }}
-                        >
-                          {doc.name}
-                        </span>
-                        {doc.available && (
-                          <span
-                            style={{
-                              width: 7, height: 7, borderRadius: "50%",
-                              background: "#10B981", display: "inline-block",
-                            }}
-                          />
-                        )}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#64748B" }}>{doc.specialty}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "flex", alignItems: "center",
-                          gap: 3, justifyContent: "flex-end",
-                        }}
-                      >
-                        <Star size={11} color="#F59E0B" fill="#F59E0B" />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "#1E293B" }}>
-                          {doc.rating}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "#94A3B8" }}>
-                        {doc.reviews} reviews
-                      </div>
-                    </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+            <h2 className="text-lg font-bold text-slate-900">Past consultations</h2>
+            <div className="mt-4 space-y-3">
+              {pastAppointments.length === 0 ? (
+                <p className="text-sm text-slate-500">Your completed and past video visits will appear here.</p>
+              ) : (
+                pastAppointments.slice(-4).reverse().map((appointment) => (
+                  <div key={appointment.id} className="rounded-lg bg-slate-50 p-4">
+                    <p className="font-semibold text-slate-900">
+                      {appointment.doctor_name ?? "Assigned Doctor"}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {formatAppointmentDate(appointment.appointment_date)} at{" "}
+                      {formatAppointmentTime(appointment.appointment_time)}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">{appointment.status}</p>
                   </div>
-
-                  <div
-                    style={{
-                      display: "flex", alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: doc.available ? "#059669" : "#94A3B8",
-                        display: "flex", alignItems: "center", gap: 4,
-                      }}
-                    >
-                      <Clock size={12} />
-                      {doc.nextSlot}
-                    </span>
-                    <Link
-                      to={`/appointments/book?doctor=${doc.id}`}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 4,
-                        fontSize: 12, fontWeight: 600, color: "#0284C7",
-                        textDecoration: "none", padding: "6px 12px",
-                        border: "1px solid #BAE6FD", borderRadius: 8,
-                      }}
-                    >
-                      Book <ChevronRight size={12} />
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
