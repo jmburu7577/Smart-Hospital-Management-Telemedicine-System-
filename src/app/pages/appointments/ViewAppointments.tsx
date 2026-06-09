@@ -2,10 +2,35 @@ import { Link } from "react-router";
 import { Calendar, Clock, User, Video, MapPin, X, Loader2 } from "lucide-react";
 import { useAppointments } from "../../contexts/AppointmentsContext";
 import { useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+
+function getAppointmentStart(date: string, time: string) {
+  const normalized = time.length === 5 ? `${time}:00` : time;
+  return new Date(`${date}T${normalized}`);
+}
+
+function formatTime(time: string) {
+  const normalized = time.length === 5 ? `${time}:00` : time;
+  return new Date(`1970-01-01T${normalized}`).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default function ViewAppointments() {
   const { appointments, loading, cancelAppointment } = useAppointments();
+  const { user } = useAuth();
   const [cancelling, setCancelling] = useState<string | null>(null);
+
+  const visibleAppointments = user
+    ? appointments.filter((appointment) =>
+        user.role === "patient"
+          ? appointment.patient_id === user.id
+          : user.role === "doctor"
+          ? appointment.doctor_id === user.id
+          : true,
+      )
+    : appointments;
 
   const handleCancel = async (id: string) => {
     if (window.confirm("Are you sure you want to cancel this appointment?")) {
@@ -45,7 +70,7 @@ export default function ViewAppointments() {
       </div>
 
       <div className="space-y-4">
-        {appointments.length === 0 ? (
+        {visibleAppointments.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
             <Calendar className="w-12 h-12 text-slate-400 mx-auto mb-4" />
             <p className="text-slate-600">No appointments found</p>
@@ -57,14 +82,25 @@ export default function ViewAppointments() {
             </Link>
           </div>
         ) : (
-          appointments.map((appointment) => (
+          visibleAppointments.map((appointment) => {
+            const start = getAppointmentStart(appointment.appointment_date, appointment.appointment_time);
+            const now = new Date();
+            const joinWindowStart = new Date(start.getTime() - 10 * 60 * 1000);
+            const joinWindowEnd = new Date(start.getTime() + 60 * 60 * 1000);
+            const canJoinCall =
+              appointment.appointment_type === "Video" &&
+              appointment.status === "Confirmed" &&
+              now >= joinWindowStart &&
+              now <= joinWindowEnd;
+
+            return (
             <div key={appointment.id} className="bg-white p-6 rounded-xl border border-slate-200 hover:shadow-lg transition-shadow">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <h3 className="text-xl font-bold text-slate-900">Dr. {appointment.doctor_id}</h3>
-                      <p className="text-slate-600">Healthcare Provider</p>
+                      <h3 className="text-xl font-bold text-slate-900">{appointment.doctor_name ?? "Assigned Doctor"}</h3>
+                      <p className="text-slate-600">{appointment.appointment_type} consultation</p>
                     </div>
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -86,7 +122,7 @@ export default function ViewAppointments() {
                     </span>
                     <span className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      {appointment.appointment_time}
+                      {formatTime(appointment.appointment_time)}
                     </span>
                     <span className="flex items-center gap-2">
                       {appointment.appointment_type === "Video" ? (
@@ -101,13 +137,20 @@ export default function ViewAppointments() {
 
                 <div className="flex gap-3">
                   {appointment.appointment_type === "Video" && appointment.status === "Confirmed" && (
-                    <Link
-                      to={`/telemedicine/consultation/${appointment.id}`}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
-                    >
-                      <Video className="w-4 h-4" />
-                      Join Call
-                    </Link>
+                    canJoinCall ? (
+                      <Link
+                        to={`/telemedicine/consultation/${appointment.id}`}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                      >
+                        <Video className="w-4 h-4" />
+                        Join Call
+                      </Link>
+                    ) : (
+                      <div className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg font-medium flex items-center gap-2">
+                        <Video className="w-4 h-4" />
+                        Starts 10 min before
+                      </div>
+                    )
                   )}
                   {appointment.status !== "Completed" && appointment.status !== "Cancelled" && (
                     <button
@@ -128,7 +171,7 @@ export default function ViewAppointments() {
                 </div>
               </div>
             </div>
-          ))
+          )})
         )}
       </div>
     </div>

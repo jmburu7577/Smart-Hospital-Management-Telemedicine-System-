@@ -16,7 +16,7 @@ create table profiles (
 -- Create doctors table (extends profiles)
 create table doctors (
   id uuid references profiles(id) not null primary key,
-  specialty text not null,
+  specialty text not null default 'General Practice',
   available_days text[], -- e.g., ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
   license_number text
 );
@@ -127,20 +127,40 @@ create policy "Users can view their own profile" on profiles
   for select using (auth.uid() = id);
 create policy "Users can update their own profile" on profiles
   for update using (auth.uid() = id);
+create policy "Authenticated users can view doctor profiles" on profiles
+  for select using (role = 'doctor');
 create policy "Doctors can view patient profiles" on profiles
+  for select using (role = 'patient' and exists (select 1 from doctors where id = auth.uid()));
+
+-- Policies for doctors
+create policy "Authenticated users can view doctors" on doctors
+  for select using (auth.role() = 'authenticated');
+create policy "Doctors can insert their own record" on doctors
+  for insert with check (auth.uid() = id);
+create policy "Doctors can update their own record" on doctors
+  for update using (auth.uid() = id);
+
+-- Policies for patients
+create policy "Patients can view their own patient record" on patients
+  for select using (auth.uid() = id);
+create policy "Patients can insert their own record" on patients
+  for insert with check (auth.uid() = id);
+create policy "Patients can update their own record" on patients
+  for update using (auth.uid() = id);
+create policy "Doctors can view patient records" on patients
   for select using (exists (select 1 from doctors where id = auth.uid()));
-create policy "Admins can view all profiles" on profiles
-  for select using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
 
 -- Policies for appointments
 create policy "Patients can view their own appointments" on appointments
   for select using (patient_id = auth.uid());
 create policy "Doctors can view their appointments" on appointments
   for select using (doctor_id = auth.uid());
-create policy "Admins can view all appointments" on appointments
-  for select using (exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
 create policy "Patients can book appointments" on appointments
   for insert with check (patient_id = auth.uid());
+create policy "Doctors can create their appointments" on appointments
+  for insert with check (doctor_id = auth.uid());
+create policy "Patients can update their own appointments" on appointments
+  for update using (patient_id = auth.uid());
 create policy "Doctors can update their appointments" on appointments
   for update using (doctor_id = auth.uid());
 
@@ -186,8 +206,25 @@ create policy "Users can send messages" on messages
 create function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, full_name, email, role)
-  values (new.id, new.raw_user_meta_data->>'full_name', new.email, (new.raw_user_meta_data->>'role')::text);
+  insert into public.profiles (id, full_name, email, role, phone)
+  values (
+    new.id,
+    new.raw_user_meta_data->>'full_name',
+    new.email,
+    coalesce((new.raw_user_meta_data->>'role')::text, 'patient'),
+    new.raw_user_meta_data->>'phone'
+  );
+
+  if coalesce((new.raw_user_meta_data->>'role')::text, 'patient') = 'patient' then
+    insert into public.patients (id)
+    values (new.id)
+    on conflict (id) do nothing;
+  elseif coalesce((new.raw_user_meta_data->>'role')::text, 'patient') = 'doctor' then
+    insert into public.doctors (id, specialty)
+    values (new.id, coalesce(new.raw_user_meta_data->>'specialty', 'General Practice'))
+    on conflict (id) do nothing;
+  end if;
+
   return new;
 end;
 $$ language plpgsql security definer;

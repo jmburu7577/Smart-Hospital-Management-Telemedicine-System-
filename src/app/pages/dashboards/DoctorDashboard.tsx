@@ -1,9 +1,9 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
   Users,
   Calendar,
   Video,
-  FileText,
   Clock,
   TrendingUp,
   Search,
@@ -14,40 +14,208 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Button } from "../../components/ui/button";
+import { useAppointments } from "../../contexts/AppointmentsContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { supabase } from "../../../lib/supabase";
+
+interface DashboardMessage {
+  id: string;
+  contactId: string;
+  contactName: string;
+  content: string;
+  created_at: string;
+  isOutgoing: boolean;
+}
 
 export default function DoctorDashboard() {
-  const todaysAppointments = [
-    { id: 1, patient: "John Smith", time: "9:00 AM", type: "Follow-up", status: "Confirmed" },
-    { id: 2, patient: "Emma Wilson", time: "10:30 AM", type: "Consultation", status: "Confirmed" },
-    { id: 3, patient: "Michael Brown", time: "2:00 PM", type: "Check-up", status: "Pending" },
-  ];
+  const { user } = useAuth();
+  const { appointments, loading } = useAppointments();
+  const [messages, setMessages] = useState<DashboardMessage[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [messageText, setMessageText] = useState("");
 
-  const recentPatients = [
-    { id: 1, name: "Sarah Davis", lastVisit: "May 18, 2026", condition: "Hypertension", email: "sarah.d@example.com" },
-    { id: 2, name: "James Miller", lastVisit: "May 17, 2026", condition: "Diabetes", email: "j.miller@example.com" },
-    { id: 3, name: "Robert Wilson", lastVisit: "May 15, 2026", condition: "Recovery", email: "r.wilson@example.com" },
-  ];
+  const doctorAppointments = useMemo(() => {
+    if (!user) {
+      return [];
+    }
 
-  const recentMessages = [
-    { id: 1, sender: "Sarah Davis", text: "Dr. Johnson, my blood pressure was 130/85 this morning.", time: "10 mins ago" },
-    { id: 2, sender: "James Miller", text: "When should I take the new medication?", time: "1 hour ago" },
-  ];
+    return appointments
+      .filter((appointment) => appointment.doctor_id === user.id)
+      .sort((a, b) => {
+        const first = new Date(`${a.appointment_date}T${a.appointment_time}`).getTime();
+        const second = new Date(`${b.appointment_date}T${b.appointment_time}`).getTime();
+        return first - second;
+      });
+  }, [appointments, user]);
+
+  const today = new Date().toISOString().split("T")[0];
+  const todaysAppointments = doctorAppointments.filter(
+    (appointment) => appointment.appointment_date === today && appointment.status !== "Cancelled",
+  );
+  const upcomingAppointments = doctorAppointments.filter((appointment) => {
+    const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
+    return start >= Date.now() && appointment.status !== "Cancelled";
+  });
+  const nextVideoAppointment = upcomingAppointments.find(
+    (appointment) => appointment.appointment_type === "Video" && appointment.status === "Confirmed",
+  );
+  const uniquePatients = [...new Set(doctorAppointments.map((appointment) => appointment.patient_id))];
+  const pendingAppointments = doctorAppointments.filter((appointment) => appointment.status === "Pending").length;
+  const weeklyAppointments = doctorAppointments.filter((appointment) => {
+    const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
+    const daysAway = (start.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return daysAway >= -7 && daysAway <= 7 && appointment.status !== "Cancelled";
+  });
+  const recentPatients = [...new Map(
+    [...doctorAppointments]
+      .sort((a, b) => {
+        const first = new Date(`${a.appointment_date}T${a.appointment_time}`).getTime();
+        const second = new Date(`${b.appointment_date}T${b.appointment_time}`).getTime();
+        return second - first;
+      })
+      .map((appointment) => [
+        appointment.patient_id,
+        {
+          id: appointment.patient_id,
+          name: appointment.patient_name ?? "Patient",
+          lastVisit: new Date(appointment.appointment_date).toLocaleDateString(),
+          condition: appointment.reason || `${appointment.appointment_type} consultation`,
+          email: `${appointment.patient_name ?? "patient"}@patient.local`,
+        },
+      ]),
+  ).values()].slice(0, 4);
+
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!user) {
+        return;
+      }
+
+      const { data: rawMessages } = await supabase
+        .from("messages")
+        .select("id, sender_id, receiver_id, content, created_at")
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order("created_at", { ascending: true });
+
+      const otherUserIds = [...new Set((rawMessages ?? []).map((message) =>
+        message.sender_id === user.id ? message.receiver_id : message.sender_id,
+      ))];
+
+      let profileMap = new Map<string, string>();
+      if (otherUserIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", otherUserIds);
+        profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile.full_name ?? "Patient"]));
+      }
+
+      const mappedMessages = (rawMessages ?? []).map((message) => {
+        const contactId = message.sender_id === user.id ? message.receiver_id : message.sender_id;
+        return {
+          id: message.id,
+          contactId,
+          contactName: profileMap.get(contactId) ?? "Patient",
+          content: message.content,
+          created_at: message.created_at,
+          isOutgoing: message.sender_id === user.id,
+        };
+      });
+
+      setMessages(mappedMessages);
+      if (!selectedContactId && mappedMessages.length > 0) {
+        setSelectedContactId(mappedMessages[0].contactId);
+      }
+    };
+
+    loadMessages();
+  }, [selectedContactId, user]);
+
+  const conversations = useMemo(() => {
+    const latestByContact = new Map<string, DashboardMessage>();
+    for (const message of [...messages].reverse()) {
+      if (!latestByContact.has(message.contactId)) {
+        latestByContact.set(message.contactId, message);
+      }
+    }
+    return [...latestByContact.values()];
+  }, [messages]);
+
+  const activeConversation = selectedContactId || conversations[0]?.contactId || "";
+  const activeMessages = messages.filter((message) => message.contactId === activeConversation);
+
+  const handleSendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !activeConversation || !messageText.trim()) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert([
+        {
+          sender_id: user.id,
+          receiver_id: activeConversation,
+          content: messageText.trim(),
+        },
+      ])
+      .select("id, sender_id, receiver_id, content, created_at")
+      .single();
+
+    if (error || !data) {
+      console.error("Error sending message:", error);
+      return;
+    }
+
+    const contactName = conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Patient";
+    setMessages((current) => [
+      ...current,
+      {
+        id: data.id,
+        contactId: activeConversation,
+        contactName,
+        content: data.content,
+        created_at: data.created_at,
+        isOutgoing: true,
+      },
+    ]);
+    setMessageText("");
+  };
+
+  const formatTime = (time: string) =>
+    new Date(`1970-01-01T${time}`).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Doctor Dashboard</h1>
-          <p className="text-slate-600 mt-2">Good morning, Dr. Johnson! Here's your schedule for today</p>
+          <p className="text-slate-600 mt-2">
+            Welcome back, {user?.name ?? "Doctor"}. This dashboard now mirrors your live schedule and telemedicine queue.
+          </p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="flex items-center gap-2">
-            <Video className="w-4 h-4" />
-            Join Next Call
-          </Button>
-          <Button className="flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            New Appointment
+          {nextVideoAppointment ? (
+            <Button variant="outline" className="flex items-center gap-2" asChild>
+              <Link to={`/telemedicine/consultation/${nextVideoAppointment.id}`}>
+                <Video className="w-4 h-4" />
+                Join Next Call
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" className="flex items-center gap-2" disabled>
+              <Video className="w-4 h-4" />
+              No Video Call Ready
+            </Button>
+          )}
+          <Button className="flex items-center gap-2" asChild>
+            <Link to="/appointments/schedule">
+              <Plus className="w-4 h-4" />
+              New Appointment
+            </Link>
           </Button>
         </div>
       </div>
@@ -68,10 +236,12 @@ export default function DoctorDashboard() {
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <Calendar className="w-6 h-6 text-blue-600" />
                 </div>
-                <span className="text-2xl font-bold text-slate-900">8</span>
+                <span className="text-2xl font-bold text-slate-900">{loading ? "..." : todaysAppointments.length}</span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Today's Appointments</h3>
-              <p className="text-xs text-green-600 mt-2 font-medium">+2 from yesterday</p>
+              <p className="text-xs text-slate-500 mt-2 font-medium">
+                {todaysAppointments.filter((appointment) => appointment.status === "Confirmed").length} confirmed today
+              </p>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -79,10 +249,10 @@ export default function DoctorDashboard() {
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                   <Users className="w-6 h-6 text-green-600" />
                 </div>
-                <span className="text-2xl font-bold text-slate-900">142</span>
+                <span className="text-2xl font-bold text-slate-900">{loading ? "..." : uniquePatients.length}</span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Total Patients</h3>
-              <p className="text-xs text-green-600 mt-2 font-medium">+5 this month</p>
+              <p className="text-xs text-slate-500 mt-2 font-medium">Based on your appointment history</p>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -90,10 +260,12 @@ export default function DoctorDashboard() {
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                   <Video className="w-6 h-6 text-purple-600" />
                 </div>
-                <span className="text-2xl font-bold text-slate-900">3</span>
+                <span className="text-2xl font-bold text-slate-900">
+                  {loading ? "..." : upcomingAppointments.filter((appointment) => appointment.appointment_type === "Video").length}
+                </span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Video Consultations</h3>
-              <p className="text-xs text-slate-500 mt-2 font-medium">Scheduled for today</p>
+              <p className="text-xs text-slate-500 mt-2 font-medium">Upcoming confirmed and pending video visits</p>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -101,10 +273,10 @@ export default function DoctorDashboard() {
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                   <TrendingUp className="w-6 h-6 text-orange-600" />
                 </div>
-                <span className="text-2xl font-bold text-slate-900">95%</span>
+                <span className="text-2xl font-bold text-slate-900">{loading ? "..." : pendingAppointments}</span>
               </div>
-              <h3 className="text-slate-600 text-sm font-medium">Satisfaction Rate</h3>
-              <p className="text-xs text-green-600 mt-2 font-medium">Top 5% in hospital</p>
+              <h3 className="text-slate-600 text-sm font-medium">Pending Confirmations</h3>
+              <p className="text-xs text-slate-500 mt-2 font-medium">Appointments needing review or follow-up</p>
             </div>
           </div>
 
@@ -118,16 +290,20 @@ export default function DoctorDashboard() {
                 </Button>
               </div>
               <div className="space-y-4">
-                {todaysAppointments.map((appointment) => (
+                {todaysAppointments.length === 0 ? (
+                  <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500">
+                    No appointments scheduled for today.
+                  </div>
+                ) : todaysAppointments.map((appointment) => (
                   <div key={appointment.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold">
-                          {appointment.patient.charAt(0)}
+                          {(appointment.patient_name ?? "P").charAt(0)}
                         </div>
                         <div>
-                          <h3 className="font-semibold text-slate-900">{appointment.patient}</h3>
-                          <p className="text-xs text-slate-600 uppercase tracking-wider font-medium">{appointment.type}</p>
+                          <h3 className="font-semibold text-slate-900">{appointment.patient_name ?? "Patient"}</h3>
+                          <p className="text-xs text-slate-600 uppercase tracking-wider font-medium">{appointment.appointment_type}</p>
                         </div>
                       </div>
                       <span className={`px-3 py-1 text-xs font-bold rounded-full ${
@@ -141,9 +317,17 @@ export default function DoctorDashboard() {
                     <div className="flex items-center gap-4 text-sm text-slate-600 mt-3">
                       <span className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-md border border-slate-200">
                         <Clock className="w-3.5 h-3.5 text-blue-600" />
-                        {appointment.time}
+                        {formatTime(appointment.appointment_time)}
                       </span>
-                      <Button variant="ghost" size="sm" className="ml-auto h-8 text-blue-600">Start Visit</Button>
+                      {appointment.appointment_type === "Video" ? (
+                        <Button variant="ghost" size="sm" className="ml-auto h-8 text-blue-600" asChild>
+                          <Link to={`/telemedicine/consultation/${appointment.id}`}>Start Visit</Link>
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="ml-auto h-8 text-blue-600" asChild>
+                          <Link to="/ehr/notes">Open Notes</Link>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -159,7 +343,11 @@ export default function DoctorDashboard() {
                 </Button>
               </div>
               <div className="space-y-4">
-                {recentPatients.map((patient) => (
+                {recentPatients.length === 0 ? (
+                  <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500">
+                    Patient summaries will appear here after appointments are created.
+                  </div>
+                ) : recentPatients.map((patient) => (
                   <div key={patient.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-semibold text-slate-900">{patient.name}</h3>
@@ -242,7 +430,9 @@ export default function DoctorDashboard() {
                       </td>
                       <td className="py-4 text-slate-600 text-sm">{patient.lastVisit}</td>
                       <td className="py-4 text-right">
-                        <Button variant="ghost" size="sm" className="text-blue-600 h-8">Records</Button>
+                        <Button variant="ghost" size="sm" className="text-blue-600 h-8" asChild>
+                          <Link to="/ehr/records">Records</Link>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -257,46 +447,62 @@ export default function DoctorDashboard() {
             <div className="md:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 font-bold text-slate-900">Conversations</div>
               <div className="divide-y divide-slate-50">
-                {recentMessages.map((msg) => (
-                  <div key={msg.id} className="p-4 hover:bg-slate-50 cursor-pointer transition-colors">
+                {conversations.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-500">No patient messages yet.</div>
+                ) : conversations.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`p-4 hover:bg-slate-50 cursor-pointer transition-colors ${activeConversation === msg.contactId ? "bg-slate-50" : ""}`}
+                    onClick={() => setSelectedContactId(msg.contactId)}
+                  >
                     <div className="flex justify-between items-start mb-1">
-                      <h4 className="font-bold text-slate-900 text-sm">{msg.sender}</h4>
-                      <span className="text-[10px] text-slate-400 font-medium uppercase">{msg.time}</span>
+                      <h4 className="font-bold text-slate-900 text-sm">{msg.contactName}</h4>
+                      <span className="text-[10px] text-slate-400 font-medium uppercase">
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </span>
                     </div>
-                    <p className="text-xs text-slate-500 line-clamp-1">{msg.text}</p>
+                    <p className="text-xs text-slate-500 line-clamp-1">{msg.content}</p>
                   </div>
                 ))}
               </div>
             </div>
             <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
               <div className="p-4 border-b border-slate-100 flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs">S</div>
-                <h4 className="font-bold text-slate-900">Sarah Davis</h4>
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs">
+                  {(conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "P").charAt(0)}
+                </div>
+                <h4 className="font-bold text-slate-900">
+                  {conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Patient Conversation"}
+                </h4>
               </div>
               <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30">
-                <div className="space-y-4">
-                  <div className="flex justify-start">
-                    <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-slate-100 max-w-[80%] shadow-sm">
-                      <p className="text-sm text-slate-800">Dr. Johnson, my blood pressure was 130/85 this morning. Should I be concerned?</p>
-                      <span className="text-[10px] text-slate-400 mt-1 block">10:45 AM</span>
-                    </div>
+                {activeMessages.length === 0 ? (
+                  <div className="text-sm text-slate-500">No messages in this conversation yet.</div>
+                ) : (
+                  <div className="space-y-4">
+                    {activeMessages.map((message) => (
+                      <div key={message.id} className={`flex ${message.isOutgoing ? "justify-end" : "justify-start"}`}>
+                        <div className={`${message.isOutgoing ? "bg-blue-600 text-white rounded-tr-none" : "bg-white border border-slate-100 text-slate-800 rounded-tl-none"} p-3 rounded-2xl max-w-[80%] shadow-sm`}>
+                          <p className="text-sm">{message.content}</p>
+                          <span className={`text-[10px] mt-1 block ${message.isOutgoing ? "text-blue-100" : "text-slate-400"}`}>
+                            {new Date(message.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex justify-end">
-                    <div className="bg-blue-600 p-3 rounded-2xl rounded-tr-none text-white max-w-[80%] shadow-md">
-                      <p className="text-sm">That's slightly elevated but within acceptable limits. Let's monitor it for 2 more days. Keep up with the low-sodium diet.</p>
-                      <span className="text-[10px] text-blue-100 mt-1 block">11:02 AM</span>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
-              <div className="p-4 border-t border-slate-100 flex gap-2">
+              <form className="p-4 border-t border-slate-100 flex gap-2" onSubmit={handleSendMessage}>
                 <input 
                   type="text" 
                   placeholder="Type a message..."
+                  value={messageText}
+                  onChange={(event) => setMessageText(event.target.value)}
                   className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <Button size="sm">Send</Button>
-              </div>
+              </form>
             </div>
           </div>
         </TabsContent>
@@ -306,24 +512,28 @@ export default function DoctorDashboard() {
       <div className="mt-12 bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-2xl text-white shadow-xl">
         <h2 className="text-xl font-bold mb-8 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-blue-400" />
-          Weekly Practice Performance
+          Weekly Practice Snapshot
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="space-y-1">
-            <div className="text-3xl font-bold text-blue-400">32</div>
-            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Consultations</p>
+            <div className="text-3xl font-bold text-blue-400">{weeklyAppointments.length}</div>
+            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Appointments</p>
           </div>
           <div className="space-y-1">
-            <div className="text-3xl font-bold text-green-400">18</div>
-            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Prescriptions</p>
+            <div className="text-3xl font-bold text-green-400">
+              {weeklyAppointments.filter((appointment) => appointment.status === "Confirmed").length}
+            </div>
+            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Confirmed</p>
           </div>
           <div className="space-y-1">
-            <div className="text-3xl font-bold text-purple-400">12</div>
-            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Lab Orders</p>
+            <div className="text-3xl font-bold text-purple-400">
+              {weeklyAppointments.filter((appointment) => appointment.appointment_type === "Video").length}
+            </div>
+            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Video Visits</p>
           </div>
           <div className="space-y-1">
-            <div className="text-3xl font-bold text-orange-400">8</div>
-            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Follow-ups</p>
+            <div className="text-3xl font-bold text-orange-400">{uniquePatients.length}</div>
+            <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Patients</p>
           </div>
         </div>
       </div>
