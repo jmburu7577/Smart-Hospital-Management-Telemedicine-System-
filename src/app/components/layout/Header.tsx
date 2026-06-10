@@ -7,13 +7,34 @@ export default function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const getHomeRoute = () => {
+    if (!user) return "/";
+
+    switch (user.role) {
+      case "admin":
+        return "/admin/dashboard";
+      case "doctor":
+        return "/doctor/dashboard";
+      case "patient":
+        return "/patient/dashboard";
+      default:
+        return "/";
+    }
+  };
+
+  const homeRoute = getHomeRoute();
+
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
-  const location = useLocation();
 
+  const location = useLocation();
   const isLandingPage = location.pathname === "/" && !user;
+
+  console.log("User:", user);
+  console.log("Role:", user?.role);
+  console.log("Home Route:", homeRoute);
 
   return (
     <header className="bg-slate-100 border-b border-slate-200 shadow-sm sticky top-0 z-50">
@@ -22,7 +43,7 @@ export default function Header() {
           <button className="lg:hidden p-2 hover:bg-slate-100 rounded-lg">
             <Menu className="w-6 h-6 text-slate-700" />
           </button>
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={homeRoute} className="flex items-center gap-2">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md">
               <span className="text-white font-bold text-xl">A</span>
             </div>
