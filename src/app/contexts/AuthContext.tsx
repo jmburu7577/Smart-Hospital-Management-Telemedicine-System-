@@ -151,17 +151,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const supabaseLogin = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
     if (error) throw error;
 
-    if (data.user) {
+    if (data?.user) {
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
         .single();
 
       if (profileError) throw profileError;
@@ -169,16 +170,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (profile) {
         const supabaseUser: User = {
           id: profile.id,
-          name: profile.full_name || '',
-          email: profile.email || '',
-          role: profile.role as Role
+          name: profile.full_name || "",
+          email: profile.email || "",
+          role: profile.role as Role,
         };
+
         setUser(supabaseUser);
-        localStorage.setItem('afya_user', JSON.stringify(supabaseUser));
+        localStorage.setItem("afya_user", JSON.stringify(supabaseUser));
       }
     }
-
-    setAuthLoading(false);
   };
 
   const supabaseSignup = async (

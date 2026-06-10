@@ -8,7 +8,15 @@ export default function Register() {
   const { supabaseSignup } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    role: "patient" | "doctor";
+    password: string;
+    confirmPassword: string;
+  }>({
     firstName: "",
     lastName: "",
     email: "",
@@ -53,9 +61,8 @@ export default function Register() {
         await supabaseSignup(
           formData.email,
           formData.password,
-          formData.role as 'patient' | 'doctor' | 'admin' | null,
-          fullName,
-          formData.phone
+          formData.role as "patient" | "doctor",
+          fullName
         );
         navigate("/login");
       }
