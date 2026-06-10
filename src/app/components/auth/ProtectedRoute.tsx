@@ -7,18 +7,32 @@ interface ProtectedRouteProps {
   allowedRoles?: ("patient" | "doctor" | "admin")[];
 }
 
-export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { user, isAuthenticated } = useAuth();
+export default function ProtectedRoute({
+  children,
+  allowedRoles,
+}: ProtectedRouteProps) {
+  const { user, isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
+  // IMPORTANT: wait until auth is loaded
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  // Not logged in
   if (!isAuthenticated) {
-    // Redirect to login but save the current location they were trying to access
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Role check
   if (allowedRoles && user && !allowedRoles.includes(user.role as any)) {
-    // Role not allowed - redirect to a safe page (e.g., their own dashboard or 404)
-    const fallbackPath = user.role === "doctor" ? "/doctor/dashboard" : "/patient/dashboard";
+    const fallbackPath =
+      user.role === "doctor"
+        ? "/doctor/dashboard"
+        : user.role === "admin"
+          ? "/admin/dashboard"
+          : "/patient/dashboard";
+
     return <Navigate to={fallbackPath} replace />;
   }
 
