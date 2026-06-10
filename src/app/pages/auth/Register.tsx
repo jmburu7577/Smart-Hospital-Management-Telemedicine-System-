@@ -54,7 +54,8 @@ export default function Register() {
           formData.email,
           formData.password,
           formData.role as 'patient' | 'doctor' | 'admin' | null,
-          fullName
+          fullName,
+          formData.phone
         );
         navigate("/login");
       }

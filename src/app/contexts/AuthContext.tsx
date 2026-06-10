@@ -27,6 +27,28 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function ensureRoleRecord(profile: { id: string; role: Role }) {
+  if (profile.role === "patient") {
+    const { error } = await supabase
+      .from("patients")
+      .upsert([{ id: profile.id }], { onConflict: "id", ignoreDuplicates: false });
+
+    if (error) {
+      console.error("Error ensuring patient record:", error);
+    }
+  }
+
+  if (profile.role === "doctor") {
+    const { error } = await supabase
+      .from("doctors")
+      .upsert([{ id: profile.id, specialty: "General Practice" }], { onConflict: "id", ignoreDuplicates: false });
+
+    if (error) {
+      console.error("Error ensuring doctor record:", error);
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
 
         if (profile) {
+          await ensureRoleRecord({ id: profile.id, role: profile.role as Role });
           const supabaseUser: User = {
             id: profile.id,
             name: profile.full_name || "",
@@ -133,6 +156,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
     });
     if (error) throw error;
+
+    if (data.user) {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      if (profile) {
+        const supabaseUser: User = {
+          id: profile.id,
+          name: profile.full_name || '',
+          email: profile.email || '',
+          role: profile.role as Role
+        };
+        setUser(supabaseUser);
+        localStorage.setItem('afya_user', JSON.stringify(supabaseUser));
+      }
+    }
+
+    setAuthLoading(false);
   };
 
   const supabaseSignup = async (
