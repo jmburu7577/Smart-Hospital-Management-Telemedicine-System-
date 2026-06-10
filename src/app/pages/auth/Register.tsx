@@ -56,16 +56,49 @@ export default function Register() {
         return;
       }
 
-      if (supabaseSignup) {
-        const fullName = `${formData.firstName} ${formData.lastName}`;
-        await supabaseSignup(
-          formData.email,
-          formData.password,
-          formData.role as "patient" | "doctor",
-          fullName
+      try {
+        if (supabaseSignup) {
+          const fullName = `${formData.firstName} ${formData.lastName}`;
+
+          await supabaseSignup(
+            formData.email,
+            formData.password,
+            formData.role,
+            fullName
+          );
+        }
+
+        // Save locally only if signup succeeds
+        const existingProfile = JSON.parse(
+          localStorage.getItem("profile") || "{}"
         );
+
+        localStorage.setItem(
+          "profile",
+          JSON.stringify({
+            ...existingProfile,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            phone: formData.phone,
+            role: formData.role,
+            dateOfBirth: existingProfile.dateOfBirth || "",
+            address: existingProfile.address || "",
+            bloodGroup: existingProfile.bloodGroup || "",
+            allergies: existingProfile.allergies || "",
+          })
+        );
+
+        localStorage.setItem("userRole", formData.role);
+
+        setLoading(false);
         navigate("/login");
+
+      } catch (err) {
+        setLoading(false);
+        setError(err instanceof Error ? err.message : "Registration failed");
       }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
