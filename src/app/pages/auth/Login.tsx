@@ -1,10 +1,10 @@
 import { Link, useNavigate } from "react-router";
 import { Mail, Lock, LogIn, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function Login() {
-  const { supabaseLogin, user } = useAuth();
+  const { supabaseLogin } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -18,17 +18,36 @@ export default function Login() {
     setLoading(true);
 
     try {
+      // 1. Validation
       if (!email || !password) {
-        setError("Please enter email and password");
+        setError("Email and password are required");
         return;
       }
 
-      if (!supabaseLogin) {
-        setError("Authentication service not available");
-        return;
-      }
-
+      // 2. Supabase login (NO destructuring!)
       await supabaseLogin(email, password);
+
+      // 3. Save session in localStorage
+      localStorage.setItem("isLoggedIn", "true");
+      localStorage.setItem("userEmail", email);
+
+      // 4. Get role from stored profile
+      const storedProfile = JSON.parse(
+        localStorage.getItem("afya_user") || "{}"
+      );
+
+      const role = storedProfile.role || "patient";
+
+      localStorage.setItem("userRole", role);
+
+      // 5. Redirect based on role
+      const redirectMap: Record<string, string> = {
+        patient: "/patient/dashboard",
+        doctor: "/doctor/dashboard",
+        admin: "/admin/dashboard",
+      };
+
+      navigate(redirectMap[role] || "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -36,28 +55,11 @@ export default function Login() {
     }
   };
 
-  const role = user?.role;
-
-  useEffect(() => {
-    if (!role) {
-      return;
-    }
-
-    const redirectMap = {
-      patient: "/patient/dashboard",
-      doctor: "/doctor/dashboard",
-      admin: "/admin/dashboard",
-    };
-
-    navigate(redirectMap[role as keyof typeof redirectMap], {
-      replace: true,
-    });
-  }, [navigate, role]);
-
   return (
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-white p-8 rounded-xl shadow-lg border border-slate-200">
 
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4">
             <LogIn className="w-8 h-8 text-white" />
@@ -72,13 +74,17 @@ export default function Login() {
           </p>
         </div>
 
+        {/* Error */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
+        {/* Form */}
         <form className="space-y-6" onSubmit={handleSubmit}>
+
+          {/* Email */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
               Email Address
@@ -98,6 +104,7 @@ export default function Login() {
             </div>
           </div>
 
+          {/* Password */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
               Password
@@ -117,19 +124,18 @@ export default function Login() {
             </div>
           </div>
 
+          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
             className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {loading && (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            )}
-
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
+        {/* Register link */}
         <div className="mt-6 text-center">
           <p className="text-slate-600">
             Don't have an account?{" "}
@@ -146,4 +152,3 @@ export default function Login() {
     </div>
   );
 }
-
