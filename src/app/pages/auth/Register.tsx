@@ -8,7 +8,15 @@ export default function Register() {
   const { supabaseSignup } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    role: "patient" | "doctor";
+    password: string;
+    confirmPassword: string;
+  }>({
     firstName: "",
     lastName: "",
     email: "",
@@ -48,17 +56,49 @@ export default function Register() {
         return;
       }
 
-      if (supabaseSignup) {
-        const fullName = `${formData.firstName} ${formData.lastName}`;
-        await supabaseSignup(
-          formData.email,
-          formData.password,
-          formData.role as 'patient' | 'doctor' | 'admin' | null,
-          fullName,
-          formData.phone
+      try {
+        if (supabaseSignup) {
+          const fullName = `${formData.firstName} ${formData.lastName}`;
+
+          await supabaseSignup(
+            formData.email,
+            formData.password,
+            formData.role,
+            fullName
+          );
+        }
+
+        // Save locally only if signup succeeds
+        const existingProfile = JSON.parse(
+          localStorage.getItem("profile") || "{}"
         );
+
+        localStorage.setItem(
+          "profile",
+          JSON.stringify({
+            ...existingProfile,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            phone: formData.phone,
+            role: formData.role,
+            dateOfBirth: existingProfile.dateOfBirth || "",
+            address: existingProfile.address || "",
+            bloodGroup: existingProfile.bloodGroup || "",
+            allergies: existingProfile.allergies || "",
+          })
+        );
+
+        localStorage.setItem("userRole", formData.role);
+
+        setLoading(false);
         navigate("/login");
+
+      } catch (err) {
+        setLoading(false);
+        setError(err instanceof Error ? err.message : "Registration failed");
       }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -167,7 +207,7 @@ export default function Register() {
             >
               <option value="patient">Patient</option>
               <option value="doctor">Doctor</option>
-              <option value="admin">Administrator</option>
+              {/* <option value="admin">Administrator</option> */}
             </select>
           </div>
 
