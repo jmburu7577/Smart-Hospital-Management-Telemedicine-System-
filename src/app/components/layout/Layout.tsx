@@ -19,7 +19,7 @@ export default function Layout() {
       <div className="flex flex-1">
         {!hideSidebar && <Sidebar />}
 
-        <main className="flex-1 p-6">
+        <main className="flex-1 min-w-0 p-6 overflow-x-hidden">
           <div className="max-w-[1200px] mx-auto w-full">
             <Outlet />
           </div>
