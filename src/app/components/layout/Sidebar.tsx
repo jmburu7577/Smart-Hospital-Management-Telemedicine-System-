@@ -11,7 +11,7 @@ export default function Sidebar() {
 
   return (
     <aside className="hidden lg:block w-64 bg-white border-r border-slate-200 min-h-[calc(100vh-73px)] sticky top-[73px]">
-      <nav className="p-4 space-y-1">
+      <nav className="p-4 space-y-1 pb-40">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
