@@ -56,6 +56,13 @@ export default function DoctorDashboard() {
     const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
     return start >= Date.now() && appointment.status !== "Cancelled";
   });
+  const pastAppointments = doctorAppointments.filter((appointment) => {
+    const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
+    return start < Date.now() && appointment.status !== "Cancelled";
+  });
+  const importantAppointments = (todaysAppointments.length > 0
+    ? todaysAppointments
+    : [...upcomingAppointments, ...[...pastAppointments].reverse()]).slice(0, 4);
   const nextVideoAppointment = upcomingAppointments.find(
     (appointment) => appointment.appointment_type === "Video" && appointment.status === "Confirmed",
   );
@@ -141,7 +148,34 @@ export default function DoctorDashboard() {
     return [...latestByContact.values()];
   }, [messages]);
 
-  const activeConversation = selectedContactId || conversations[0]?.contactId || "";
+  const appointmentContacts = useMemo(() => {
+    const uniqueByPatient = new Map<string, DashboardMessage>();
+    for (const appointment of doctorAppointments) {
+      if (!uniqueByPatient.has(appointment.patient_id)) {
+        uniqueByPatient.set(appointment.patient_id, {
+          id: `appointment-${appointment.patient_id}`,
+          contactId: appointment.patient_id,
+          contactName: appointment.patient_name ?? "Patient",
+          content: appointment.reason || `${appointment.appointment_type} consultation`,
+          created_at: `${appointment.appointment_date}T${appointment.appointment_time}`,
+          isOutgoing: false,
+        });
+      }
+    }
+    return [...uniqueByPatient.values()];
+  }, [doctorAppointments]);
+
+  const availableConversations = useMemo(() => {
+    const byContact = new Map<string, DashboardMessage>();
+    for (const conversation of [...appointmentContacts, ...conversations]) {
+      if (!byContact.has(conversation.contactId)) {
+        byContact.set(conversation.contactId, conversation);
+      }
+    }
+    return [...byContact.values()];
+  }, [appointmentContacts, conversations]);
+
+  const activeConversation = selectedContactId || availableConversations[0]?.contactId || "";
   const activeMessages = messages.filter((message) => message.contactId === activeConversation);
 
   const handleSendMessage = async (event: React.FormEvent) => {
@@ -167,7 +201,7 @@ export default function DoctorDashboard() {
       return;
     }
 
-    const contactName = conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Patient";
+    const contactName = availableConversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Patient";
     setMessages((current) => [
       ...current,
       {
@@ -290,11 +324,11 @@ export default function DoctorDashboard() {
                 </Button>
               </div>
               <div className="space-y-4">
-                {todaysAppointments.length === 0 ? (
+                {importantAppointments.length === 0 ? (
                   <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500">
-                    No appointments scheduled for today.
+                    No appointments found yet for this doctor.
                   </div>
-                ) : todaysAppointments.map((appointment) => (
+                ) : importantAppointments.map((appointment) => (
                   <div key={appointment.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-3">
@@ -385,11 +419,36 @@ export default function DoctorDashboard() {
         <TabsContent value="appointments" className="space-y-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
             <h2 className="text-xl font-bold text-slate-900 mb-6">Detailed Schedule</h2>
-            {/* Appointment management table would go here */}
-            <div className="text-center py-12 text-slate-500">
-              <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p>Calendar view and advanced scheduling tools coming soon.</p>
-            </div>
+            {doctorAppointments.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                <p>No appointments available for this doctor yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {doctorAppointments.map((appointment) => (
+                  <div key={appointment.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">{appointment.patient_name ?? "Patient"}</p>
+                        <p className="text-sm text-slate-600">
+                          {new Date(appointment.appointment_date).toLocaleDateString()} at {formatTime(appointment.appointment_time)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">{appointment.reason || "No consultation note added yet."}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          {appointment.appointment_type}
+                        </span>
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                          {appointment.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -447,9 +506,9 @@ export default function DoctorDashboard() {
             <div className="md:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 font-bold text-slate-900">Conversations</div>
               <div className="divide-y divide-slate-50">
-                {conversations.length === 0 ? (
-                  <div className="p-4 text-sm text-slate-500">No patient messages yet.</div>
-                ) : conversations.map((msg) => (
+                {availableConversations.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-500">No patient contacts yet. Once you have appointments, patients appear here.</div>
+                ) : availableConversations.map((msg) => (
                   <div
                     key={msg.id}
                     className={`p-4 hover:bg-slate-50 cursor-pointer transition-colors ${activeConversation === msg.contactId ? "bg-slate-50" : ""}`}
@@ -469,15 +528,19 @@ export default function DoctorDashboard() {
             <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[400px]">
               <div className="p-4 border-b border-slate-100 flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs">
-                  {(conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "P").charAt(0)}
+                  {(availableConversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "P").charAt(0)}
                 </div>
                 <h4 className="font-bold text-slate-900">
-                  {conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Patient Conversation"}
+                  {availableConversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Patient Conversation"}
                 </h4>
               </div>
               <div className="flex-1 p-6 overflow-y-auto bg-slate-50/30">
                 {activeMessages.length === 0 ? (
-                  <div className="text-sm text-slate-500">No messages in this conversation yet.</div>
+                  <div className="text-sm text-slate-500">
+                    {activeConversation
+                      ? "No messages in this conversation yet. You can send the first message now."
+                      : "No messages yet. Patients tied to your appointments will appear here so you can start messaging."}
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     {activeMessages.map((message) => (
@@ -499,9 +562,10 @@ export default function DoctorDashboard() {
                   placeholder="Type a message..."
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
+                  disabled={!activeConversation}
                   className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
-                <Button size="sm">Send</Button>
+                <Button size="sm" disabled={!activeConversation}>Send</Button>
               </form>
             </div>
           </div>

@@ -1,10 +1,10 @@
 import { Link, useNavigate } from "react-router";
 import { Mail, Lock, LogIn, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Login() {
-  const { supabaseLogin } = useAuth();
+  const { supabaseLogin, user } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -27,27 +27,24 @@ export default function Login() {
       // 2. Supabase login (NO destructuring!)
       await supabaseLogin(email, password);
 
-      // 3. Save session in localStorage
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("userEmail", email);
+      const savedUser = localStorage.getItem("afya_user");
 
-      // 4. Get role from stored profile
-      const storedProfile = JSON.parse(
-        localStorage.getItem("afya_user") || "{}"
-      );
+      if (!savedUser) {
+        setError("Login succeeded but user data not found");
+        return;
+      }
 
-      const role = storedProfile.role || "patient";
+      const role = JSON.parse(savedUser).role;
 
-      localStorage.setItem("userRole", role);
-
-      // 5. Redirect based on role
-      const redirectMap: Record<string, string> = {
+      const redirectMap = {
         patient: "/patient/dashboard",
         doctor: "/doctor/dashboard",
         admin: "/admin/dashboard",
       };
 
-      navigate(redirectMap[role] || "/dashboard");
+      navigate(redirectMap[role as keyof typeof redirectMap], {
+        replace: true,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

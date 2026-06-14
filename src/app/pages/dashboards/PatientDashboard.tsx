@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAppointments, type Appointment } from "../../contexts/AppointmentsContext";
+import { usePrescriptions } from "../../contexts/PrescriptionsContext";
 import { supabase } from "../../../lib/supabase";
 
 interface LabTestItem {
@@ -28,11 +29,13 @@ interface LabTestItem {
 
 interface PrescriptionItem {
   id: string;
+  patient_id?: string;
   medication: string;
   dosage: string;
   frequency: string;
   remaining_supply: string | null;
   status: string;
+  prescription_date?: string;
 }
 
 interface MedicalRecordItem {
@@ -54,8 +57,8 @@ interface DashboardMessage {
 export default function PatientDashboard() {
   const { user } = useAuth();
   const { appointments, loading } = useAppointments();
+  const { prescriptions, loading: prescriptionsLoading, requestRefill } = usePrescriptions();
   const [recentTests, setRecentTests] = useState<LabTestItem[]>([]);
-  const [activePrescriptions, setActivePrescriptions] = useState<PrescriptionItem[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecordItem[]>([]);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string>("");
@@ -79,16 +82,11 @@ export default function PatientDashboard() {
     const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
     return start >= Date.now() && appointment.status !== "Cancelled";
   });
-  const upcomingVideoAppointments = upcomingAppointments.filter(
-    (appointment) => appointment.appointment_type === "Video",
-  );
-  const confirmedAppointments = patientAppointments.filter(
-    (appointment) => appointment.status === "Confirmed",
-  ).length;
-  const pendingAppointments = patientAppointments.filter(
-    (appointment) => appointment.status === "Pending",
-  ).length;
-
+  const pastAppointments = patientAppointments.filter((appointment) => {
+    const start = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
+    return start < Date.now() && appointment.status !== "Cancelled";
+  });
+  const importantAppointments = [...upcomingAppointments, ...[...pastAppointments].reverse()].slice(0, 3);
   const formatDate = (date: string) =>
     new Date(date).toLocaleDateString([], {
       month: "short",
@@ -123,13 +121,39 @@ export default function PatientDashboard() {
     return { canJoin: true, label: "Join Call" };
   };
 
+  const upcomingVideoAppointments = upcomingAppointments.filter(
+    (appointment) => appointment.appointment_type === "Video",
+  );
+  const pharmacyPrescriptions = useMemo(
+    () =>
+      (prescriptions as PrescriptionItem[])
+        .filter((prescription) => !user || prescription.patient_id === user.id)
+        .sort((a, b) => {
+          const first = new Date(a.prescription_date ?? 0).getTime();
+          const second = new Date(b.prescription_date ?? 0).getTime();
+          return second - first;
+        }),
+    [prescriptions, user],
+  );
+  const confirmedAppointments = patientAppointments.filter(
+    (appointment) => appointment.status === "Confirmed",
+  ).length;
+  const pendingAppointments = patientAppointments.filter(
+    (appointment) => appointment.status === "Pending",
+  ).length;
+  const nextAppointment = upcomingAppointments[0] ?? null;
+  const joinReadyVideoCount = upcomingVideoAppointments.filter((appointment) => getJoinState(appointment).canJoin).length;
+  const refillNeededCount = pharmacyPrescriptions.filter((prescription) => prescription.status === "Refill Needed").length;
+  const activePrescriptionCount = pharmacyPrescriptions.filter((prescription) => prescription.status === "Active").length;
+  const pendingActionCount = pendingAppointments + refillNeededCount;
+
   useEffect(() => {
     const loadDashboardData = async () => {
       if (!user || user.role !== "patient") {
         return;
       }
 
-      const [{ data: tests }, { data: prescriptions }, { data: records }, { data: rawMessages }] =
+      const [{ data: tests }, { data: records }, { data: rawMessages }] =
         await Promise.all([
           supabase
             .from("lab_tests")
@@ -137,12 +161,6 @@ export default function PatientDashboard() {
             .eq("patient_id", user.id)
             .order("test_date", { ascending: false })
             .limit(5),
-          supabase
-            .from("prescriptions")
-            .select("id, medication, dosage, frequency, remaining_supply, status")
-            .eq("patient_id", user.id)
-            .order("prescription_date", { ascending: false })
-            .limit(6),
           supabase
             .from("medical_records")
             .select("id, title, record_type, record_date")
@@ -157,7 +175,6 @@ export default function PatientDashboard() {
         ]);
 
       setRecentTests((tests ?? []) as LabTestItem[]);
-      setActivePrescriptions((prescriptions ?? []) as PrescriptionItem[]);
       setMedicalRecords((records ?? []) as MedicalRecordItem[]);
 
       const otherUserIds = [...new Set((rawMessages ?? []).map((message) =>
@@ -204,7 +221,34 @@ export default function PatientDashboard() {
     return [...latestByContact.values()];
   }, [messages]);
 
-  const activeConversation = selectedContactId || conversations[0]?.contactId || "";
+  const appointmentContacts = useMemo(() => {
+    const uniqueByDoctor = new Map<string, DashboardMessage>();
+    for (const appointment of patientAppointments) {
+      if (!uniqueByDoctor.has(appointment.doctor_id)) {
+        uniqueByDoctor.set(appointment.doctor_id, {
+          id: `appointment-${appointment.doctor_id}`,
+          contactId: appointment.doctor_id,
+          contactName: appointment.doctor_name ?? "Assigned Doctor",
+          content: appointment.reason || `${appointment.appointment_type} consultation`,
+          created_at: `${appointment.appointment_date}T${appointment.appointment_time}`,
+          isOutgoing: false,
+        });
+      }
+    }
+    return [...uniqueByDoctor.values()];
+  }, [patientAppointments]);
+
+  const availableConversations = useMemo(() => {
+    const byContact = new Map<string, DashboardMessage>();
+    for (const conversation of [...appointmentContacts, ...conversations]) {
+      if (!byContact.has(conversation.contactId)) {
+        byContact.set(conversation.contactId, conversation);
+      }
+    }
+    return [...byContact.values()];
+  }, [appointmentContacts, conversations]);
+
+  const activeConversation = selectedContactId || availableConversations[0]?.contactId || "";
   const activeMessages = messages.filter((message) => message.contactId === activeConversation);
 
   const handleSendMessage = async (event: React.FormEvent) => {
@@ -230,7 +274,7 @@ export default function PatientDashboard() {
       return;
     }
 
-    const contactName = conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Care team";
+    const contactName = availableConversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "Care team";
     setMessages((current) => [
       ...current,
       {
@@ -288,6 +332,11 @@ export default function PatientDashboard() {
                 <span className="text-2xl font-bold text-slate-900">{loading ? "..." : upcomingAppointments.length}</span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Upcoming Appointments</h3>
+              <p className="mt-2 text-xs text-slate-500">
+                {nextAppointment
+                  ? `Next: ${formatDate(nextAppointment.appointment_date)} at ${formatTime(nextAppointment.appointment_time)}`
+                  : "No future appointments booked"}
+              </p>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -298,6 +347,11 @@ export default function PatientDashboard() {
                 <span className="text-2xl font-bold text-slate-900">{loading ? "..." : confirmedAppointments}</span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Confirmed Visits</h3>
+              <p className="mt-2 text-xs text-slate-500">
+                {patientAppointments.length > 0
+                  ? `${patientAppointments.length} total appointments on record`
+                  : "No appointment history yet"}
+              </p>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -308,6 +362,13 @@ export default function PatientDashboard() {
                 <span className="text-2xl font-bold text-slate-900">{loading ? "..." : upcomingVideoAppointments.length}</span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Video Consultations</h3>
+              <p className="mt-2 text-xs text-slate-500">
+                {joinReadyVideoCount > 0
+                  ? `${joinReadyVideoCount} ready to join now`
+                  : upcomingVideoAppointments.length > 0
+                  ? "Scheduled but not yet joinable"
+                  : "No video visits scheduled"}
+              </p>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -315,9 +376,12 @@ export default function PatientDashboard() {
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                   <Activity className="w-6 h-6 text-orange-600" />
                 </div>
-                <span className="text-2xl font-bold text-slate-900">{loading ? "..." : pendingAppointments}</span>
+                <span className="text-2xl font-bold text-slate-900">{loading ? "..." : pendingActionCount}</span>
               </div>
               <h3 className="text-slate-600 text-sm font-medium">Pending Requests</h3>
+              <p className="mt-2 text-xs text-slate-500">
+                {pendingAppointments} appointments, {refillNeededCount} refills, {activePrescriptionCount} active meds
+              </p>
             </div>
           </div>
 
@@ -331,11 +395,11 @@ export default function PatientDashboard() {
                 </Button>
               </div>
               <div className="space-y-4">
-                {upcomingAppointments.length === 0 ? (
+                {importantAppointments.length === 0 ? (
                   <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500">
-                    No upcoming appointments yet. Book one to see it here.
+                    No appointments yet. Book one to see it here.
                   </div>
-                ) : upcomingAppointments.slice(0, 3).map((appointment) => {
+                ) : importantAppointments.map((appointment) => {
                   const joinState = getJoinState(appointment);
                   return (
                   <div key={appointment.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
@@ -435,7 +499,11 @@ export default function PatientDashboard() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {upcomingAppointments.map((appointment) => (
+              {patientAppointments.length === 0 ? (
+                <div className="col-span-full p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500">
+                  No appointments found for this account yet.
+                </div>
+              ) : patientAppointments.map((appointment) => (
                 <div key={appointment.id} className="border border-slate-200 rounded-xl p-5 hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-4">
                     <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold">
@@ -525,13 +593,27 @@ export default function PatientDashboard() {
 
         <TabsContent value="prescriptions" className="space-y-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-900 mb-6">Active Medications</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Pharmacy Prescriptions</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Shows the same patient prescriptions that the pharmacy flow should manage.
+                </p>
+              </div>
+              <Button variant="outline" asChild>
+                <Link to="/pharmacy">Open Pharmacy</Link>
+              </Button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {activePrescriptions.length === 0 ? (
+              {prescriptionsLoading ? (
+                <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500 md:col-span-2">
+                  Loading pharmacy prescriptions...
+                </div>
+              ) : pharmacyPrescriptions.length === 0 ? (
                 <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 text-sm text-slate-500 md:col-span-2">
                   No prescriptions available yet.
                 </div>
-              ) : activePrescriptions.map((p) => (
+              ) : pharmacyPrescriptions.map((p) => (
                 <div key={p.id} className="p-5 border border-slate-200 rounded-xl bg-slate-50/30">
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
@@ -549,13 +631,26 @@ export default function PatientDashboard() {
                       {p.status}
                     </span>
                   </div>
+                  <div className="text-xs text-slate-500 mb-3">
+                    Pharmacy date: {p.prescription_date ? formatDate(p.prescription_date) : "Not recorded"}
+                  </div>
                   <div className="flex items-center justify-between text-sm mb-4">
                     <span className="text-slate-600">Remaining supply:</span>
                     <span className="font-bold text-slate-900">{p.remaining_supply ?? "N/A"}</span>
                   </div>
-                  <Button variant={p.status === 'Active' ? 'outline' : 'default'} className="w-full h-9 text-xs font-bold">
-                    {p.status === 'Active' ? 'View Details' : 'Request Refill'}
-                  </Button>
+                  {p.status === "Refill Needed" ? (
+                    <Button
+                      variant="default"
+                      className="w-full h-9 text-xs font-bold"
+                      onClick={() => requestRefill(p.id)}
+                    >
+                      Request Refill
+                    </Button>
+                  ) : (
+                    <Button variant="outline" className="w-full h-9 text-xs font-bold" asChild>
+                      <Link to="/pharmacy">View In Pharmacy</Link>
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -567,11 +662,11 @@ export default function PatientDashboard() {
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                  {(conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "C").charAt(0)}
+                  {(availableConversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "C").charAt(0)}
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900">
-                    {conversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "No conversation selected"}
+                    {availableConversations.find((conversation) => conversation.contactId === activeConversation)?.contactName ?? "No conversation selected"}
                   </h4>
                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                     Secure messaging
@@ -584,7 +679,11 @@ export default function PatientDashboard() {
             </div>
             <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/20">
               {activeMessages.length === 0 ? (
-                <div className="text-sm text-slate-500">No messages yet. Once you contact your care team, the thread will appear here.</div>
+                <div className="text-sm text-slate-500">
+                  {activeConversation
+                    ? "No messages yet in this conversation. You can send the first message now."
+                    : "No messages yet. Your appointment doctors will appear here so you can start a conversation."}
+                </div>
               ) : activeMessages.map((message) => (
                 <div key={message.id} className={`flex ${message.isOutgoing ? "justify-end" : "justify-start"}`}>
                   <div className={`${message.isOutgoing ? "bg-blue-600 text-white rounded-tr-none" : "bg-white border border-slate-100 text-slate-800 rounded-tl-none"} p-4 rounded-2xl max-w-[80%] shadow-sm`}>
@@ -603,9 +702,10 @@ export default function PatientDashboard() {
                   placeholder="Type your message here..."
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
+                  disabled={!activeConversation}
                   className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 />
-                <Button className="rounded-xl px-6">Send</Button>
+                <Button className="rounded-xl px-6" disabled={!activeConversation}>Send</Button>
               </form>
             </div>
           </div>
