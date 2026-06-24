@@ -10,6 +10,8 @@ import {
     Users,
     Settings,
     LayoutDashboard,
+    MessageCircle,
+    Stethoscope,
 } from "lucide-react";
 
 export const getNavItems = (user: any) => {
@@ -26,7 +28,8 @@ export const getNavItems = (user: any) => {
             { path: "/pharmacy", icon: Pill, label: "Pharmacy" },
             { path: "/laboratory", icon: TestTube, label: "Lab Results" },
             { path: "/billing", icon: CreditCard, label: "Billing" },
-            { path: "/symptom-checker", icon: Brain, label: "AI Checker" }
+            { path: "/symptom-checker", icon: Brain, label: "AI Checker" },
+            { path: "/messages", icon: MessageCircle, label: "Messages" }  // NEW
         );
     } else if (user.role === "doctor") {
         items.push(
@@ -34,13 +37,16 @@ export const getNavItems = (user: any) => {
             { path: "/appointments/schedule", icon: Calendar, label: "My Schedule" },
             { path: "/ehr/records", icon: Users, label: "Patient Records" },
             { path: "/telemedicine", icon: Video, label: "Video Consults" },
-            { path: "/laboratory", icon: TestTube, label: "Lab Orders" }
+            { path: "/laboratory", icon: TestTube, label: "Lab Orders" },
+            { path: "/messages", icon: MessageCircle, label: "Messages" }   // NEW
         );
     } else if (user.role === "admin") {
         items.push(
             { path: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-            { path: "/users", icon: Users, label: "User Management" },
-            { path: "/billing", icon: CreditCard, label: "Revenue" }
+            { path: "/admin/doctors", icon: Stethoscope, label: "Doctors" },       // NEW
+            { path: "/admin/patients", icon: Users, label: "Patients" },           // NEW
+            { path: "/billing", icon: CreditCard, label: "Revenue" },
+            { path: "/messages", icon: MessageCircle, label: "Messages" }          // NEW
         );
     }
 

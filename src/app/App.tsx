@@ -6,6 +6,7 @@ import { BillingProvider } from "./contexts/BillingContext";
 import { AppointmentsProvider } from "./contexts/AppointmentsContext";
 import { PrescriptionsProvider } from "./contexts/PrescriptionsContext";
 import { MedicalRecordsProvider } from "./contexts/MedicalRecordsContext";
+import { MessagesProvider } from "./contexts/MessagesContext"; // NEW
 
 export default function App() {
   return (
@@ -15,7 +16,9 @@ export default function App() {
           <AppointmentsProvider>
             <PrescriptionsProvider>
               <MedicalRecordsProvider>
-                <RouterProvider router={router} />
+                <MessagesProvider>        {/* NEW */}
+                  <RouterProvider router={router} />
+                </MessagesProvider>
               </MedicalRecordsProvider>
             </PrescriptionsProvider>
           </AppointmentsProvider>
