@@ -23,8 +23,10 @@ import Profile from "./pages/profile/Profile";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import DoctorProfile from "./pages/doctors/DoctorProfile";
-
-
+// ── NEW ─────────────────────────────────────────────────────
+import Messages from "./pages/messages/Messages";
+import ManageDoctors from "./pages/admin/ManageDoctors";
+import ManagePatients from "./pages/admin/ManagePatients";
 
 export const router = createBrowserRouter([
   {
@@ -97,7 +99,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: "ehr/notes",
+        path: "ehr/consultation-notes",
         element: (
           <ProtectedRoute>
             <ConsultationNotes />
@@ -123,7 +125,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: "telemedicine/consultation/:id",
+        path: "telemedicine/video/:appointmentId",
         element: (
           <ProtectedRoute>
             <VideoConsultation />
@@ -131,7 +133,7 @@ export const router = createBrowserRouter([
         ),
       },
 
-      // Hospital Services (protected)
+      // Pharmacy (protected)
       {
         path: "pharmacy",
         element: (
@@ -140,6 +142,8 @@ export const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+
+      // Laboratory (protected)
       {
         path: "laboratory",
         element: (
@@ -148,6 +152,8 @@ export const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+
+      // Billing (protected)
       {
         path: "billing",
         element: (
@@ -157,7 +163,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: "payments",
+        path: "billing/payments",
         element: (
           <ProtectedRoute>
             <Payments />
@@ -165,7 +171,7 @@ export const router = createBrowserRouter([
         ),
       },
 
-      // AI & Profile (protected)
+      // AI Symptom Checker (protected)
       {
         path: "symptom-checker",
         element: (
@@ -174,6 +180,8 @@ export const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+
+      // Profile (protected)
       {
         path: "profile",
         element: (
@@ -184,10 +192,41 @@ export const router = createBrowserRouter([
       },
       {
         path: "doctors/:id",
-        element: <DoctorProfile />,
+        element: (
+          <ProtectedRoute>
+            <DoctorProfile />
+          </ProtectedRoute>
+        ),
       },
 
-      // 404
+      // ── Messages (protected) — NEW ──────────────────────
+      {
+        path: "messages",
+        element: (
+          <ProtectedRoute>
+            <Messages />
+          </ProtectedRoute>
+        ),
+      },
+
+      // ── Admin: User Management — NEW ───────────────────
+      {
+        path: "admin/doctors",
+        element: (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <ManageDoctors />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "admin/patients",
+        element: (
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <ManagePatients />
+          </ProtectedRoute>
+        ),
+      },
+
       { path: "*", Component: NotFound },
     ],
   },
